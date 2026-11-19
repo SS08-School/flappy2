@@ -1,19 +1,18 @@
-import { Game, viewportLayout } from './engine.mjs';
+import { Game, METRICS, PHYSICS, viewportLayout } from './engine.mjs';
 import { SPRITES, loadAssets, drawSprite, drawBird, drawBackground, drawGround, drawPipe, drawNumber } from './assets.mjs';
-import { TRANSITION_TIMING, transitionEase, resultPresentation } from './transitions.mjs';
-import { flapAngle, impactPresentation } from './bird-presentation.mjs';
+import { TRANSITION_TIMING as TIMING, resultPresentation, transitionEase } from './transitions.mjs';
+import { flapAngle, impactPresentation, wingPose, idleBob } from './bird-presentation.mjs';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d'), ui = $('game-ui');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-let screen = 'home', loaded = false, view;
-let clock = 0, previous = performance.now(), idleDistance = 0;
-let best = 0, finalScore = 0, newBest = false;
-let splash = { kind: 'home', alpha: reducedMotion ? 1 : 0, from: 0, to: 1, elapsed: 0, duration: TRANSITION_TIMING.splashIn };
-let navigation = null, resultsElapsed = 0, resultExitElapsed = null;
-let flapElapsed = Infinity, birdTilt = 0, impact = null;
+let screen = 'home', loaded = false, view, night = false, rounds = 0;
+let clock = 0, previous = performance.now(), landDistance = 0;
+let best = 0, previousBest = 0, finalScore = 0, newBest = false;
+let scene = { phase: reducedMotion ? 'idle' : 'in', elapsed: 0 }, sceneBlack = reducedMotion ? 0 : 1;
+let readyAge = 0, readyExitAge = null, flapElapsed = Infinity;
+let birdTilt = 0, lastWing = 0, impact = null;
 
-// BEST is shown only with the official scorecard and number sprites.
 try {
   const saved = localStorage.getItem('flappy-best');
   const legacy = JSON.parse(localStorage.getItem('flabby-guest') || '{}').best;
@@ -22,37 +21,36 @@ try {
 } catch {}
 
 const game = new Game({ onEvent(type, data) {
-  if (type === 'hit') impact = { elapsed: 0, startingAngle: birdTilt };
+  if (type === 'hit') {
+    impact = { elapsed: 0, startingAngle: birdTilt, wing: lastWing };
+    previousBest = best; finalScore = game.score; screen = 'hit'; updateControls();
+  }
   if (type === 'score') canvas.setAttribute('aria-label', `Score ${data.score}. Tap, Space, or Up to flap.`);
   if (type === 'over') {
-    screen = 'over'; finalScore = data.score; newBest = finalScore > best;
-    resultsElapsed = 0; resultExitElapsed = null;
+    if (!impact) { impact = { elapsed: 0, startingAngle: birdTilt, wing: lastWing }; previousBest = best; }
+    screen = 'over'; finalScore = data.score; newBest = finalScore > previousBest;
     best = Math.max(best, finalScore);
     try { localStorage.setItem('flappy-best', String(best)); } catch {}
     updateControls();
   }
 } });
 
+function resultState() { return resultPresentation(impact?.elapsed ?? 0, finalScore, reducedMotion); }
 function updateControls() {
-  $('play-controls').hidden = !loaded || !['home', 'over'].includes(screen);
-  $('menu-button').hidden = !loaded || screen === 'home';
-  updateControlPresentation();
-}
-function updateControlPresentation() {
-  const result = resultPresentation(resultsElapsed, resultExitElapsed, reducedMotion);
-  const controls = $('play-controls');
-  controls.style.opacity = String(screen === 'over' ? result.replayOpacity : splash.alpha);
-  controls.style.transform = `translate(-50%, ${screen === 'over' ? result.replayY : 0}px)`;
-  $('play-button').disabled = !!navigation || (screen === 'over' && result.replayOpacity === 0);
-  ui.style.opacity = String(1 - (impact ? impactPresentation(impact.elapsed, impact.startingAngle, reducedMotion).flash : 0));
+  const result = resultState();
+  const showReplay = screen === 'over' && result.finished;
+  $('play-controls').hidden = !loaded || !(screen === 'home' || showReplay);
+  $('rate-button').hidden = !loaded || screen !== 'home';
+  $('play-button').disabled = scene.phase !== 'idle' || (screen === 'over' && result.replayOpacity === 0);
+  $('play-controls').style.opacity = String(screen === 'over' ? result.replayOpacity : 1);
+  const flash = impact ? impactPresentation(impact.elapsed, impact.startingAngle, reducedMotion).flash : 0;
+  ui.style.opacity = String((1 - sceneBlack) * (1 - flash));
 }
 function paintControls() {
   if (!loaded) return;
   document.querySelectorAll('[data-sprite]').forEach(c => {
-    const sprite = SPRITES[c.dataset.sprite];
-    c.width = sprite.width; c.height = sprite.height;
-    const context = c.getContext('2d'); context.clearRect(0, 0, c.width, c.height);
-    drawSprite(context, c.dataset.sprite, 0, 0);
+    const sprite = SPRITES[c.dataset.sprite]; c.width = sprite.width; c.height = sprite.height;
+    drawSprite(c.getContext('2d'), c.dataset.sprite, 0, 0);
   });
 }
 function resize() {
@@ -62,143 +60,134 @@ function resize() {
   canvas.width = Math.round(rect.width * view.dpr); canvas.height = Math.round(rect.height * view.dpr);
   game.resize(view.width, view.height);
   ui.style.width = `${view.width}px`; ui.style.height = `${view.height}px`; ui.style.transform = `scale(${view.scale})`;
-  ui.style.setProperty('--buttons-y', `${game.ground - 88}px`);
+  // UI shadows sit behind the foreground ground strip, as in the reference.
+  ui.style.clipPath = `inset(0px 0px ${METRICS.groundHeight}px 0px)`;
+  ui.style.setProperty('--buttons-y', `${game.ground - 60}px`);
+  ui.style.setProperty('--rate-x', `${(game.width - METRICS.width) / 2 + 107}px`);
+  ui.style.setProperty('--rate-y', `${(game.height - METRICS.height) / 2 + 207}px`);
   paintControls();
 }
 new ResizeObserver(resize).observe($('game-frame'));
 resize();
 
-function fadeSplash(kind, to, duration) {
-  const from = splash.kind === kind ? splash.alpha : 0;
-  splash = { kind, from, to, alpha: reducedMotion ? to : from, elapsed: 0, duration };
-}
 function showReady() {
-  game.reset(); screen = 'ready'; navigation = null;
-  flapElapsed = Infinity; birdTilt = 0; impact = null;
-  resultsElapsed = 0; resultExitElapsed = null;
-  fadeSplash('ready', 1, TRANSITION_TIMING.splashIn);
+  game.reset(); screen = 'ready';
+  night = rounds++ > 0 && Math.random() < .5;
+  readyAge = 0; readyExitAge = null; flapElapsed = Infinity; birdTilt = 0; impact = null;
   updateControls(); canvas.focus({ preventScroll: true });
 }
 function prepareRun() {
-  if (!loaded || navigation) return;
+  if (!loaded || scene.phase !== 'idle' || !['home', 'over'].includes(screen)) return;
+  if (screen === 'over' && !resultState().finished) return;
   if (reducedMotion) { showReady(); return; }
-  if (screen === 'home') {
-    fadeSplash('home', 0, TRANSITION_TIMING.splashOut);
-    navigation = { elapsed: 0, duration: TRANSITION_TIMING.splashOut };
-  } else if (screen === 'over') {
-    resultExitElapsed = 0;
-    navigation = { elapsed: 0, duration: TRANSITION_TIMING.resultsOut };
-  } else return;
-  updateControls();
-}
-function returnHome() {
-  navigation = null; resultExitElapsed = null; resultsElapsed = 0;
-  game.reset(); screen = 'home';
-  flapElapsed = Infinity; birdTilt = 0; impact = null;
-  splash = { kind: 'home', alpha: reducedMotion ? 1 : 0, from: 0, to: 1, elapsed: 0, duration: TRANSITION_TIMING.splashIn };
-  updateControls(); canvas.focus({ preventScroll: true });
+  scene = { phase: 'out', elapsed: 0 }; updateControls();
 }
 function flap() {
   if (!loaded) { initializeAssets(); return; }
-  if (navigation) return;
-  if (screen === 'home') prepareRun();
-  else if (screen === 'ready') {
-    game.start(); screen = 'playing'; flapElapsed = 0;
-    fadeSplash('ready', 0, TRANSITION_TIMING.splashOut); updateControls();
-  }
-  else if (game.state === 'playing') { game.flap(); flapElapsed = 0; }
+  if (scene.phase !== 'idle') return;
+  if (screen === 'ready') {
+    const bob = reducedMotion ? 0 : idleBob(clock);
+    game.start(); game.bird.y += bob; screen = 'playing'; flapElapsed = 0; readyExitAge = 0; updateControls();
+  } else if (game.state === 'playing') { game.flap(); flapElapsed = 0; }
 }
 $('play-button').addEventListener('click', prepareRun);
-$('menu-button').addEventListener('click', returnHome);
-canvas.addEventListener('pointerdown', event => { event.preventDefault(); flap(); });
+document.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || event.isPrimary === false || event.target.closest('button')) return;
+  event.preventDefault(); flap();
+});
 document.addEventListener('keydown', event => {
-  if (event.code === 'Escape') { event.preventDefault(); returnHome(); }
+  // Escape deliberately has no game action.
   if (['Space', 'ArrowUp', 'Enter'].includes(event.code) && !event.target.closest('button')) {
     event.preventDefault(); if (!event.repeat) flap();
   }
 });
 
-function advancePresentation(dt) {
-  if (navigation) {
-    navigation.elapsed += dt;
-    if (navigation.elapsed >= navigation.duration) {
-      const remainder = navigation.elapsed - navigation.duration;
-      showReady(); dt = remainder;
+function advanceScene(dt) {
+  while (scene.phase !== 'idle' && dt > 0) {
+    const duration = scene.phase === 'out' ? TIMING.sceneOut : scene.phase === 'hold' ? TIMING.sceneHold : TIMING.sceneIn;
+    const step = Math.min(dt, duration - scene.elapsed); scene.elapsed += step; dt -= step;
+    if (scene.elapsed + 1e-9 < duration) break;
+    if (scene.phase === 'out') { showReady(); scene = { phase: 'hold', elapsed: 0 }; }
+    else if (scene.phase === 'hold') scene = { phase: 'in', elapsed: 0 };
+    else scene = { phase: 'idle', elapsed: 0 };
+  }
+  sceneBlack = scene.phase === 'idle' ? 0 : scene.phase === 'hold' ? 1 : scene.phase === 'out' ? transitionEase(scene.elapsed / TIMING.sceneOut) : 1 - transitionEase(scene.elapsed / TIMING.sceneIn);
+}
+function renderResults(xOffset, yOffset) {
+  const result = resultState();
+  if (result.headerOpacity > 0) {
+    ctx.save(); ctx.globalAlpha = result.headerOpacity;
+    drawSprite(ctx, 'over', xOffset + 42, yOffset + 68 + result.headerY); ctx.restore();
+  }
+  if (!result.cardVisible) return;
+  ctx.save(); ctx.translate(xOffset, yOffset + result.cardY);
+  drawSprite(ctx, 'scorePanel', 25, 130);
+  drawNumber(ctx, result.displayScore, 236, 165, 1, 'right', true);
+  drawNumber(ctx, Math.max(previousBest, result.displayScore), 236, 207, 1, 'right', true);
+  if (result.finished && newBest) drawSprite(ctx, 'new', 166, 189);
+  const medal = finalScore >= 40 ? 'platinum' : finalScore >= 30 ? 'gold' : finalScore >= 20 ? 'silver' : finalScore >= 10 ? 'bronze' : null;
+  if (medal && result.medalOpacity > 0) {
+    ctx.save(); ctx.globalAlpha = result.medalOpacity;
+    drawSprite(ctx, medal, 57 + 22 * (1 - result.medalScale), 174 + 22 * (1 - result.medalScale), result.medalScale);
+    if (!reducedMotion && result.finished) {
+      const sparkle = (impact.elapsed % 1.2) / 1.2;
+      ctx.globalAlpha *= Math.max(0, 1 - Math.abs(sparkle - .5) * 5);
+      drawSprite(ctx, 'sparkle', 59 + 30 * sparkle, 176 + 28 * sparkle);
     }
+    ctx.restore();
   }
-  splash.elapsed += dt;
-  const progress = reducedMotion ? 1 : transitionEase(splash.elapsed / splash.duration);
-  splash.alpha = splash.from + (splash.to - splash.from) * progress;
-  if (screen === 'over') {
-    resultsElapsed += dt;
-    if (resultExitElapsed !== null) resultExitElapsed += dt;
-  }
-  updateControlPresentation();
+  ctx.restore();
 }
 function frame(time) {
-  const elapsed = Math.max(0, (time - previous) / 1000 || .016);
-  const dt = Math.min(elapsed, .035); previous = time; clock += dt;
-  flapElapsed += dt;
+  const elapsed = Math.max(0, (time - previous) / 1000 || .016), dt = Math.min(elapsed, .1); previous = time;
+  advanceScene(elapsed);
+  if (scene.phase !== 'hold') readyAge += elapsed;
+  if (readyExitAge !== null) readyExitAge += elapsed;
+  flapElapsed += dt; clock += dt;
   if (impact) impact.elapsed += elapsed;
-  advancePresentation(elapsed);
-  if (['home', 'ready'].includes(screen) && !reducedMotion) idleDistance += dt * 18;
+  const oldDistance = game.distance;
   game.update(dt);
-  const distance = ['home', 'ready'].includes(screen) ? idleDistance : game.distance;
-  const ground = game.ground, width = game.width, center = ground / 2;
+  if (!impact) landDistance += game.state === 'playing' ? game.distance - oldDistance : PHYSICS.speed * dt;
+  updateControls();
   const factor = view.scale * view.dpr;
   ctx.setTransform(factor, 0, 0, factor, 0, 0); ctx.imageSmoothingEnabled = false;
-  drawBackground(ctx, width, game.height, ground, distance);
+  const width = game.width, ground = game.ground, ox = (width - METRICS.width) / 2, oy = (game.height - METRICS.height) / 2;
+  drawBackground(ctx, width, game.height, ground, night);
   for (const pipe of game.pipes) {
     drawPipe(ctx, pipe.x, 0, pipe.width, pipe.center - pipe.gap / 2, true);
     drawPipe(ctx, pipe.x, pipe.center + pipe.gap / 2, pipe.width, ground - pipe.center - pipe.gap / 2);
   }
   if (loaded) {
-    const wing = Math.sin(clock * (game.state === 'playing' ? 19 : 7));
-    if (splash.kind === 'ready' && splash.alpha > 0 && ['ready', 'playing'].includes(screen)) {
-      ctx.save(); ctx.globalAlpha = splash.alpha;
-      drawSprite(ctx, 'ready', width / 2 - 98, center - 112);
-      drawSprite(ctx, 'tutorial', width / 2 - 57, center - 36); ctx.restore();
-    }
+    const wing = impact ? impact.wing : wingPose(clock);
     if (screen === 'home') {
-      ctx.save(); ctx.globalAlpha = splash.alpha;
-      drawSprite(ctx, 'title', width / 2 - 89, center - 100); ctx.restore();
-      drawBird(ctx, width / 2, center - 8 + (reducedMotion ? 0 : Math.sin(clock * 3) * 4), wing);
-    } else if (screen === 'ready') {
-      drawBird(ctx, game.bird.x, game.bird.y + (reducedMotion ? 0 : Math.sin(clock * 3) * 3), wing);
+      drawSprite(ctx, 'title', ox + 55, oy + 86);
+      drawBird(ctx, ox + 144, oy + 164 + (reducedMotion ? 0 : idleBob(clock)), wing);
     } else {
-      const falling = ['falling', 'over'].includes(game.state);
-      birdTilt = impact ? impactPresentation(impact.elapsed, impact.startingAngle, reducedMotion).angle : flapAngle(flapElapsed, game.bird.vy);
-      drawBird(ctx, game.bird.x, game.bird.y, falling ? 0 : wing,
-        falling && !impact ? 1.3 : birdTilt);
-      if (screen !== 'over') drawNumber(ctx, game.score, width / 2, 48);
+      if (!impact || (!reducedMotion && impact.elapsed < TIMING.headerDelay)) drawNumber(ctx, game.score, width / 2, 18);
+      const readyOpacity = reducedMotion ? readyExitAge === null ? 1 : 0 : readyExitAge === null ? Math.min(1, readyAge / TIMING.readyIn) : Math.max(0, 1 - readyExitAge / TIMING.readyOut);
+      if (readyOpacity > 0 && ['ready', 'playing'].includes(screen)) {
+        ctx.save(); ctx.globalAlpha = readyOpacity;
+        drawSprite(ctx, 'ready', ox + 46, oy + 84); drawSprite(ctx, 'tutorial', ox + 87, oy + 156); ctx.restore();
+      }
+      birdTilt = impact ? impactPresentation(impact.elapsed, impact.startingAngle, reducedMotion).angle : game.state === 'ready' ? 0 : flapAngle(flapElapsed, game.bird.vy);
+      drawBird(ctx, game.bird.x, game.bird.y + (screen === 'ready' && !reducedMotion ? idleBob(clock) : 0), wing, birdTilt);
+      if (impact) renderResults(ox, oy);
     }
+    lastWing = wing;
   }
-  drawGround(ctx, width, ground, distance);
-  if (screen === 'over' && loaded) {
-    const result = resultPresentation(resultsElapsed, resultExitElapsed, reducedMotion);
-    ctx.save(); ctx.globalAlpha = result.cardOpacity; ctx.translate(0, result.cardY);
-    drawSprite(ctx, 'over', width / 2 - 102, center - 102);
-    const x = width / 2 - 113, y = center - 20;
-    drawSprite(ctx, 'scorePanel', x - 6, y - 2);
-    const medal = finalScore >= 40 ? 'platinum' : finalScore >= 30 ? 'gold' : finalScore >= 20 ? 'silver' : finalScore >= 10 ? 'bronze' : null;
-    if (medal) {
-      ctx.save(); ctx.globalAlpha *= result.medalOpacity;
-      drawSprite(ctx, medal, x + 26 + 22 * (1 - result.medalScale), y + 42 + 22 * (1 - result.medalScale), result.medalScale);
-      ctx.restore();
-    }
-    drawNumber(ctx, finalScore, x + 210, y + 35, .5, 'right');
-    drawNumber(ctx, best, x + 210, y + 77, .5, 'right');
-    if (newBest) drawSprite(ctx, 'new', x + 129, y + 78);
-    ctx.restore();
-  }
+  drawGround(ctx, width, ground, landDistance);
+  if (loaded && screen === 'home') drawSprite(ctx, 'copyright', ox + 81, ground + 19);
   if (impact) {
     ctx.save(); ctx.fillStyle = '#fff'; ctx.globalAlpha = impactPresentation(impact.elapsed, impact.startingAngle, reducedMotion).flash;
+    ctx.fillRect(0, 0, width, game.height); ctx.restore();
+  }
+  if (sceneBlack > 0) {
+    ctx.save(); ctx.fillStyle = '#000'; ctx.globalAlpha = sceneBlack;
     ctx.fillRect(0, 0, width, game.height); ctx.restore();
   }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-
 function initializeAssets() {
   loadAssets().then(() => { loaded = true; updateControls(); paintControls(); }).catch(error => console.error(error));
 }

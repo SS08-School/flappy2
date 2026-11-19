@@ -1,17 +1,17 @@
 *{box-sizing:border-box}
-html,body{position:fixed;inset:0;width:100%;height:100%;margin:0;overflow:hidden;overscroll-behavior:none;background:#4ec0ca}
+html,body{position:fixed;inset:0;width:100%;height:100%;margin:0;overflow:hidden;overscroll-behavior:none;background:#000}
 body{touch-action:none}
 [hidden]{display:none!important}
-#game-frame{position:fixed;inset:0;overflow:hidden}
+#game-frame{position:fixed;inset:0;overflow:hidden;background:#4ec0ca}
 #game{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none}
 canvas{image-rendering:pixelated}
 #game-ui{position:absolute;top:0;left:0;transform-origin:0 0;pointer-events:none}
 .sprite-button{display:block;pointer-events:auto;border:0;background:none;padding:0;width:max-content;line-height:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .sprite-button canvas{display:block;pointer-events:none}
-.sprite-button:active{transform:translateY(2px)}
+.sprite-button:disabled{cursor:default}
+.sprite-button:active:not(:disabled){transform:translateY(2px)}
 .sprite-button:focus-visible{outline:2px solid #fff;outline-offset:3px}
-#menu-button{position:absolute;right:10px;top:10px}
-#play-controls{position:absolute;left:50%;top:var(--buttons-y);transform:translateX(-50%)}
-/* Temporary original-phone viewport for accuracy checks; remove the body class to unlock. */
-body.aspect-locked{background:#000}
-.aspect-locked #game-frame{inset:auto;left:50%;top:50%;width:min(100vw,56.25dvh);height:min(100dvh,177.7777777778vw);transform:translate(-50%,-50%)}
+#play-controls{position:absolute;left:50%;top:var(--buttons-y);transform:translateX(-50%);display:flex;gap:16px}
+#rate-button{position:absolute;left:var(--rate-x);top:var(--rate-y)}
+/* Keep the reference video's 3:4 viewport locked until the user asks to unlock. */
+.aspect-locked #game-frame{inset:auto;left:50%;top:50%;width:min(100vw,75dvh);height:min(100dvh,133.3333333333vw);transform:translate(-50%,-50%)}

@@ -4,17 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#4ec0ca">
-  <meta name="description" content="Flappy Bird adapted for widescreen using the official sprite sheet.">
+  <meta name="description" content="A silent, yellow-bird recreation of Flappy Bird v1.3 using the uploaded official sprites.">
   <title>Flappy Bird</title>
   <link rel="stylesheet" href="/style.css">
   <script type="module" src="/game.js"></script>
 </head>
 <body class="aspect-locked">
   <main id="game-frame" aria-label="Flappy Bird">
-    <canvas id="game" tabindex="0" aria-label="Press Space, Up, or tap to flap. Escape returns to the title screen."></canvas>
+    <canvas id="game" tabindex="0" aria-label="Press Space, Up, or tap anywhere, including the black bars, to flap."></canvas>
     <div id="game-ui">
-      <button id="menu-button" class="sprite-button" aria-label="Return to title screen" hidden><canvas data-sprite="menu" width="80" height="28" aria-hidden="true"></canvas></button>
-      <div id="play-controls" hidden><button id="play-button" class="sprite-button" aria-label="Play"><canvas data-sprite="play" width="116" height="70" aria-hidden="true"></canvas></button></div>
+      <button id="rate-button" class="sprite-button" aria-label="Rate (display only)" disabled hidden><canvas data-sprite="rate" width="74" height="48" aria-hidden="true"></canvas></button>
+      <div id="play-controls" hidden>
+        <button id="play-button" class="sprite-button" aria-label="Play"><canvas data-sprite="play" width="116" height="70" aria-hidden="true"></canvas></button>
+        <button class="sprite-button" aria-label="Leaderboard (display only)" disabled><canvas data-sprite="leaderboard" width="116" height="70" aria-hidden="true"></canvas></button>
+      </div>
     </div>
   </main>
 </body>

@@ -5,6 +5,7 @@ export const ASSET_FILES = ['official-v1.3.png'];
 export const SPRITES = {
   yellow: { width: 34, height: 24, frames: [[6, 982], [62, 982], [118, 982]] },
   day: { x: 0, y: 0, width: 288, height: 512 },
+  night: { x: 292, y: 0, width: 288, height: 512 },
   ground: { x: 584, y: 0, width: 336, height: 112 },
   pipeTop: { x: 112, y: 646, width: 52, height: 320 },
   pipeBottom: { x: 168, y: 646, width: 52, height: 320 },
@@ -13,6 +14,10 @@ export const SPRITES = {
   over: { x: 784, y: 116, width: 204, height: 54 },
   tutorial: { x: 584, y: 182, width: 114, height: 100 },
   play: { x: 702, y: 234, width: 116, height: 70 },
+  leaderboard: { x: 822, y: 234, width: 116, height: 70 },
+  rate: { x: 924, y: 0, width: 74, height: 48 },
+  copyright: { x: 884, y: 182, width: 126, height: 14 },
+  sparkle: { x: 276, y: 786, width: 10, height: 10 },
   menu: { x: 924, y: 52, width: 80, height: 28 },
   scorePanel: { x: 0, y: 516, width: 238, height: 126 },
   platinum: { x: 242, y: 516, width: 44, height: 44 },
@@ -23,6 +28,7 @@ export const SPRITES = {
 };
 // Every score glyph is cropped from the uploaded atlas; no font-rendered digits.
 const DIGITS = [[992,120,24],[272,910,16],[584,320,24],[612,320,24],[640,320,24],[668,320,24],[584,368,24],[612,368,24],[640,368,24],[668,368,24]];
+const RESULT_DIGITS = [[274,612,14],[278,954,10],[262,1002,14],[622,412,14],[1004,0,14],[1004,24,14],[1010,52,14],[1010,84,14],[586,484,14],[274,978,14]];
 let atlas, loading;
 export function loadAssets() {
   loading ||= new Promise((resolve, reject) => {
@@ -47,15 +53,14 @@ export function drawBird(ctx, x, y, wing = 0, angle = 0) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(atlas, sx, sy, s.width, s.height, -17, -12, 34, 24); ctx.restore();
 }
-export function drawBackground(ctx, width, height, ground, distance) {
-  ctx.fillStyle = '#4ec0ca'; ctx.fillRect(0, 0, width, height);
+export function drawBackground(ctx, width, height, ground, night = false) {
+  ctx.fillStyle = night ? '#008793' : '#4ec0ca'; ctx.fillRect(0, 0, width, height);
   if (!atlas) return;
   const s = SPRITES.day;
-  const offset = distance * .15 % s.width;
-  for (let x = -offset; x < width; x += s.width) {
-    // Anchor the original skyline to the original ground line (400 / 512).
+  for (let x = 0; x < width; x += s.width) {
+    // The reference skyline is stationary; only the ground and pipes scroll.
     // Tall screens gain sky; wide screens gain tiles. Sprite proportions never change.
-    drawSprite(ctx, 'day', x, ground - 400);
+    drawSprite(ctx, night ? 'night' : 'day', x, ground - 400);
   }
 }
 export function drawGround(ctx, width, ground, distance) {
@@ -82,13 +87,14 @@ export function drawPipe(ctx, x, y, width, height, up = false, alpha = 1) {
   }
   ctx.restore();
 }
-export function drawNumber(ctx, value, x, y, scale = 1, align = 'center') {
+export function drawNumber(ctx, value, x, y, scale = 1, align = 'center', result = false) {
   if (!atlas) return;
-  const digits = String(Math.max(0, Math.floor(value))).split('').map(n => DIGITS[Number(n)]);
+  const digits = String(Math.max(0, Math.floor(value))).split('').map(n => (result ? RESULT_DIGITS : DIGITS)[Number(n)]);
+  const height = result ? 20 : 36;
   const width = (digits.reduce((sum, d) => sum + d[2], 0) + (digits.length - 1) * 4) * scale;
   let left = x - (align === 'right' ? width : align === 'left' ? 0 : width / 2);
   for (const [sx, sy, sw] of digits) {
-    ctx.drawImage(atlas, sx, sy, sw, 36, Math.round(left), Math.round(y), sw * scale, 36 * scale);
+    ctx.drawImage(atlas, sx, sy, sw, height, Math.round(left), Math.round(y), sw * scale, height * scale);
     left += (sw + 4) * scale;
   }
 }

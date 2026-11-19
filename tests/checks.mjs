@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { Game, PHYSICS, viewportLayout } from '../public/engine.mjs';
+import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
 import { createApp } from '../server.mjs';
 import { ASSET_FILES, SPRITES } from '../public/assets.mjs';
 
@@ -9,28 +9,41 @@ export function checkEngine() {
   const events = [], game = new Game({ random: () => .5, onEvent: (type, data) => events.push({ type, data }) });
   game.start(); assert.equal(game.state, 'playing'); assert.ok(game.bird.vy < 0);
   game.pipes = [{ x: game.bird.x - 10, center: game.bird.y + 100, gap: 100, width: 52, scored: false }];
-  game.update(.01); assert.equal(game.state, 'falling', 'first pipe collision ends control');
+  game.update(.02); assert.equal(game.state, 'falling', 'first pipe collision ends control');
   const vy = game.bird.vy, distance = game.distance, score = game.score;
   game.flap(); assert.equal(game.bird.vy, vy, 'cannot flap after collision');
   for (let i = 0; i < 100; i++) game.update(.035);
   assert.equal(game.state, 'over'); assert.equal(game.distance, distance); assert.equal(game.score, score);
   assert.equal(events.filter(e => e.type === 'over').length, 1, 'one game-over event');
+  const trajectories = [30,60,120].map(fps => {
+    const run = new Game(); run.start();
+    for (let frame=0;frame<fps/5;frame++) run.update(1/fps);
+    return {y:run.bird.y,distance:run.distance};
+  });
+  assert.ok(trajectories.every(t=>Math.abs(t.y-trajectories[0].y)<1e-9&&t.distance===trajectories[0].distance),'30/60/120 Hz renders produce identical physics');
   game.start(); game.bird.y = game.ground - 1; game.bird.vy = 100; game.update(.02);
   assert.equal(game.state, 'over', 'first ground collision ends the run');
-  game.start(); game.pipes = [{ x: game.bird.x - 70, center: game.bird.y, gap: 100, width: 52, scored: false }];
+  game.start(); game.pipes = [{ x: game.bird.x - 20, center: game.bird.y, gap: 100, width: 52, scored: false }];
   game.update(.02); assert.equal(game.score, 1); game.update(.02); assert.equal(game.score, 1, 'one point per pipe');
-  game.start(); game.score = 999; game.update(.02);
-  assert.equal(game.distance, PHYSICS.speed * .02, 'speed does not increase with score');
+  game.start(); game.score = 999; game.update(PHYSICS.step);
+  assert.equal(game.distance, 2, 'fixed native two-pixel step does not change with score');
   assert.ok(game.pipes.every(p => p.gap === 100 && p.width === 52));
   assert.ok(!('health' in game) && !('pickups' in game) && !('active' in game), 'no proposal mechanics');
-  for (const [width, height] of [[1920,1080],[390,844],[844,390],[288,512],[2560,1080]]) {
+  for (const [width, height] of [[1920,1080],[390,844],[844,390],[288,384],[2560,1080]]) {
     const view = viewportLayout(width, height);
     assert.ok(Math.abs(view.width * view.scale - width) < .001);
     assert.ok(Math.abs(view.height * view.scale - height) < .001);
-    assert.ok(view.width >= 288 - .001 && view.height >= 512 - .001);
+    assert.ok(view.width >= METRICS.width - .001 && view.height >= METRICS.height - .001);
   }
+  game.start();
+  const pump = () => { game.bird.y = 188; game.bird.vy = 0; game.update(PHYSICS.step); };
+  for (let i = 0; i < 131; i++) pump();
+  assert.equal(game.pipes.length, 0, 'first pipe waits for the measured opening delay');
+  pump(); assert.equal(game.pipes.length, 1); assert.ok(Math.abs(game.pipes[0].x - 288) < .001);
+  for (let i = 0; i < 78; i++) pump();
+  assert.equal(game.pipes.length, 2); assert.ok(Math.abs(game.pipes[1].x - game.pipes[0].x - 156) < .001, 'reference pipe spacing');
   const pipe = game.pipes[0], relativeX = pipe.x - game.bird.x;
-  game.resize(910,512); assert.ok(Math.abs(pipe.x - game.bird.x - relativeX) < .001);
+  game.resize(910,384); assert.ok(Math.abs(pipe.x - game.bird.x - relativeX) < .001);
   assert.equal(game.state, 'playing', 'resize preserves the run without a menu');
   game.reset(); assert.equal(game.state, 'ready'); assert.equal(game.score, 0); assert.equal(game.pipes.length, 0);
   return 'Original rules: first-hit loss, death fall, fixed speed, scoring, reset, and widescreen geometry passed.';

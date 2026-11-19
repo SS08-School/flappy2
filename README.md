@@ -1,48 +1,51 @@
-# Flappy Bird — Widescreen
+# Flappy Bird — v1.3 reference build
 
-Original Flappy Bird gameplay adapted to fill the browser viewport, using only the uploaded official v1.3 sprite sheet.
+Silent recreation of the [supplied gameplay reference](https://www.youtube.com/watch?v=8nJhk_u4krI), using only the uploaded official sprite sheet. The bird stays yellow. Recording watermarks are omitted.
 
 ## Run
 
-With Node.js 18 or newer installed:
+With Node.js 18 or newer:
 
 ```sh
 npm start
 ```
 
-Open **http://localhost:3000**. `npm run dev` restarts the server on source changes. Set `PORT` to choose another port. There are no package dependencies.
+Open **http://localhost:3000**. `npm run dev` restarts the server on source changes. There are no package dependencies.
 
-## Play
+## Controls
 
-Select the official Play button, then tap, press Space, or press Up to flap. Pass through each pipe pair for one point. A single collision ends the run. Speed and gap size remain fixed. The Menu button (or Escape) returns directly to the title screen.
+Select Play, then click or tap anywhere, including the black bars, or press Space/Up to flap. **Escape does nothing and never resets the run.** Rate and leaderboard buttons are visual placeholders, as requested. Sound remains off.
 
-The original Game Over scorecard displays the score, BEST, NEW indicator, and earned medal using only the uploaded sprites. BEST is kept silently in browser local storage. There are no save messages, custom text boxes, accounts, leaderboards, unlocks, powerups, extra lives, difficulty levels, or custom menus.
+## Reference measurements
 
-All visible labels and numbers come from the official sprite sheet. Accessibility labels are nonvisual. The game is silent because no audio files were included in the uploaded assets.
+The viewport is locked to the video's **3:4** shape, at a native **288 × 384** logical resolution. The body class `aspect-locked` controls the lock; keep it until the user requests unlocking.
 
-## Display
+| Element | Native measurement |
+| --- | --- |
+| Bird / pipe width | 34 × 24 / 52 px |
+| Foreground ground strip | 48 px; ground at y=336 |
+| Pipe speed / spacing / gap | 120 px/s / 156 px / 100 px |
+| First pipe delay | Approximately 2.2 s from the first flap |
+| Simulation | Fixed 60 Hz |
+| Flap impulse / gravity | −330 px/s / 1100 px/s², fitted from the recorded flight arc |
+| Large score | Centered at y=18, official 24 × 36 glyphs |
+| Result score | Separate official 14 × 20 glyphs (10 px wide for 1) |
+| Title / Ready / Game Over | Native y=86 / 84 / 68 |
+| Result card | Native x=25, y=130 including its shadow |
+| Buttons | Native x=20 and 152, y=276 |
 
-The viewport is temporarily locked to the original **9:16 portrait ratio** for accuracy testing, with black letterboxing. The `aspect-locked` class on `<body>` controls this lock; leave it enabled until testing is complete.
+The skyline is stationary; ground and pipes move at the same speed. Day and night backgrounds use the uploaded atlas, with daytime on the first run and random variants afterward. The title includes the original Rate, Play, leaderboard and copyright graphics. All visible words and digits come from the sheet.
 
-Screen-transition timing is referenced from [nebez/floppybird's main.js](https://github.com/nebez/floppybird/blob/gh-pages/js/main.js): splash fades, the scorecard slide/fade, staged replay reveal, medal zoom, and replay exit. These are implemented locally for Canvas. No assets, libraries, gameplay, flap-frame animation, or layout from that project are imported. Menu still returns to the title screen immediately and cancels pending transitions.
+Screen changes fade through black. The Game Over heading, slide-up card, score count-up, medal and buttons appear in the reference order. Numeric timings are measured from a compressed 30 fps recording, so they are approximations rather than recovered original source constants.
 
-The existing wing-frame animation is retained. The upward pose lasts about 0.4 seconds, then eases into the existing downward tilt. Impact adds a roughly half-second white flash and gradual downward rotation, measured from the user's supplied gameplay clip. Movement physics remain fixed. Reduced-motion preferences skip screen tweens and the impact flash.
+BEST persists silently in browser local storage. There are no accounts, custom dialogs, powerups, unlocks, extra lives, difficulty ramps, downloaded graphics, fonts or audio. Existing ignored database files remain untouched.
 
-The original 288 × 512 logical viewport defines a single uniform scale: bird 34 × 24, pipes 52 wide, ground 112 high. Wide screens extend the repeating scenery horizontally; tall screens add sky. Sprites retain their proportions. The canvas fills the viewport without scrolling and uses nearest-neighbor image rendering.
-
-## Source and verification
-
-- `public/engine.mjs`: movement, fixed pipe spacing and speed, collision, score, and resizing.
-- `public/assets.mjs`: crops and renders the unchanged official atlas.
-- `public/game.js`: title, Get Ready, gameplay, death fall, scorecard, and Menu-to-title behavior.
-- `public/transitions.mjs`: screen-animation timing and easing only.
-- `public/bird-presentation.mjs`: the reference clip's upward-pose and impact visuals, separate from physics.
-- `server.mjs`: serves static game files only. The previous account APIs are removed; any existing ignored database files remain untouched.
+## Verify
 
 ```sh
 npm test
 ```
 
-Checks cover first-hit loss, death animation, fixed difficulty, scoring, viewport geometry, static-file access, the uploaded asset checksum, and client transitions with DOM/canvas test doubles. Those controller checks do not replace visual browser verification.
+Checks cover the first-hit loss, delayed pipes, fixed spacing/speed, 60 Hz stepping, portrait sizing, Escape behavior, black-bar input, scene/result staging, official atlas integrity and static-file access. Client checks use DOM/canvas test doubles; they do not replace visual browser verification.
 
-See [ASSET_CREDITS.md](ASSET_CREDITS.md) for the sole runtime asset's source.
+`public/engine.mjs` contains physics, `public/assets.mjs` defines official crops, `public/game.js` renders the reference screens, and the presentation modules contain visual timing. See [ASSET_CREDITS.md](ASSET_CREDITS.md).

@@ -1,5 +1,6 @@
-export const METRICS = { width: 288, height: 512, groundHeight: 112, birdWidth: 34, birdHeight: 24, pipeWidth: 52 };
-export const PHYSICS = { speed: 120, spacing: 180, gap: 100, gravity: 900, flap: -280 };
+// Native-pixel measurements from the supplied v1.3 gameplay reference.
+export const METRICS = { width: 288, height: 384, groundHeight: 48, birdWidth: 34, birdHeight: 24, pipeWidth: 52 };
+export const PHYSICS = { speed: 120, spacing: 156, gap: 100, gravity: 1100, flap: -330, firstPipeDelay: 2.2, step: 1 / 60 };
 
 export function viewportLayout(width, height) {
   const scale = Math.min(Math.max(1, width) / METRICS.width, Math.max(1, height) / METRICS.height);
@@ -7,24 +8,23 @@ export function viewportLayout(width, height) {
 }
 
 export class Game {
-  constructor({ width = 288, height = 512, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ width = METRICS.width, height = METRICS.height, random = Math.random, onEvent = () => {} } = {}) {
     this.width = width; this.height = height; this.random = random; this.onEvent = onEvent;
     this.reset();
   }
   get ground() { return this.height - METRICS.groundHeight; }
   reset() {
-    this.state = 'ready'; this.score = 0; this.distance = 0;
-    this.bird = { x: this.width * .3, y: this.ground / 2, vy: 0, radius: 12 };
+    this.state = 'ready'; this.score = 0; this.distance = 0; this.elapsed = 0; this.accumulator = 0;
+    this.bird = { x: 90 + (this.width - METRICS.width) * .3, y: 188 + (this.height - METRICS.height) / 2, vy: 0, radius: 12 };
     this.pipes = [];
-    this.spawnX = this.bird.x + 210;
+    this.nextPipeAt = PHYSICS.firstPipeDelay;
   }
   resize(width, height) {
     const oldGround = this.ground, oldX = this.bird.x;
     this.width = width; this.height = height;
-    this.bird.x = width * .3;
+    this.bird.x = 90 + (width - METRICS.width) * .3;
     this.bird.y = Math.max(12, Math.min(this.ground - 12, this.bird.y / oldGround * this.ground));
     const shift = this.bird.x - oldX;
-    this.spawnX += shift;
     for (const pipe of this.pipes) {
       pipe.x += shift;
       pipe.center = Math.max(pipe.gap / 2 + 30, Math.min(this.ground - pipe.gap / 2 - 30, pipe.center / oldGround * this.ground));
@@ -43,25 +43,32 @@ export class Game {
   }
   update(dt) {
     if (!['playing', 'falling'].includes(this.state)) return;
-    dt = Math.max(0, Math.min(dt, .035));
+    this.accumulator += Math.max(0, Math.min(dt, .1));
+    while (this.accumulator + 1e-10 >= PHYSICS.step) {
+      this.accumulator -= PHYSICS.step;
+      this.step(PHYSICS.step);
+      if (this.state === 'over') { this.accumulator = 0; break; }
+    }
+  }
+  step(dt) {
     this.bird.vy += PHYSICS.gravity * dt;
     this.bird.y += this.bird.vy * dt;
     if (this.state === 'playing') {
       const delta = PHYSICS.speed * dt;
-      this.distance += delta; this.spawnX -= delta;
+      this.distance += delta; this.elapsed += dt;
       for (const pipe of this.pipes) pipe.x -= delta;
-      while (this.spawnX < this.width + 100) {
+      while (this.elapsed + 1e-10 >= this.nextPipeAt) {
         const margin = 50;
         const center = margin + PHYSICS.gap / 2 + this.random() * (this.ground - margin * 2 - PHYSICS.gap);
-        this.pipes.push({ x: this.spawnX, center, gap: PHYSICS.gap, width: METRICS.pipeWidth, scored: false });
-        this.spawnX += PHYSICS.spacing;
+        this.pipes.push({ x: this.width - (this.elapsed - this.nextPipeAt) * PHYSICS.speed, center, gap: PHYSICS.gap, width: METRICS.pipeWidth, scored: false });
+        this.nextPipeAt += PHYSICS.spacing / PHYSICS.speed;
       }
       for (const pipe of this.pipes) {
         const r = this.bird.radius;
         if (this.bird.x + r > pipe.x && this.bird.x - r < pipe.x + pipe.width && (this.bird.y - r < pipe.center - pipe.gap / 2 || this.bird.y + r > pipe.center + pipe.gap / 2)) {
           this.hit(); break;
         }
-        if (!pipe.scored && pipe.x + pipe.width < this.bird.x - r) {
+        if (!pipe.scored && pipe.x + pipe.width / 4 < this.bird.x) {
           pipe.scored = true; this.score++; this.onEvent('score', { score: this.score });
         }
       }
