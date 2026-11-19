@@ -8,7 +8,7 @@ export const SPRITES = {
   ground: { x: 584, y: 0, width: 336, height: 112 },
   pipeTop: { x: 112, y: 646, width: 52, height: 320 },
   pipeBottom: { x: 168, y: 646, width: 52, height: 320 },
-  title: { x: 702, y: 182, width: 178, height: 44 },
+  title: { x: 702, y: 182, width: 178, height: 48 },
   ready: { x: 590, y: 118, width: 184, height: 50 },
   over: { x: 790, y: 118, width: 192, height: 50 },
   tutorial: { x: 584, y: 182, width: 112, height: 100 },
