@@ -54,7 +54,7 @@ export async function checkServer() {
   const base = `http://127.0.0.1:${app.server.address().port}`;
   try {
     const page = await fetch(base); assert.equal(page.status, 200); assert.equal(page.headers.get('set-cookie'), null);
-    const html = await page.text(), body = html.match(/<body>([\s\S]*?)<\/body>/)[1];
+    const html = await page.text(), body = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/)[1];
     assert.equal(body.replace(/<[^>]*>/g, '').trim(), '', 'no visible text outside official image sprites');
     for (const path of ['/game.js','/engine.mjs','/assets.mjs','/style.css']) assert.equal((await fetch(base + path)).status, 200);
     const sprite = await fetch(base + '/assets/flappy/official-v1.3.png'); assert.equal(sprite.status, 200); assert.equal(sprite.headers.get('content-type'), 'image/png');

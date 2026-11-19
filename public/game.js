@@ -1,5 +1,5 @@
 import { Game, viewportLayout } from './engine.mjs';
-import { loadAssets, drawSprite, drawBird, drawBackground, drawGround, drawPipe, drawNumber } from './assets.mjs';
+import { SPRITES, loadAssets, drawSprite, drawBird, drawBackground, drawGround, drawPipe, drawNumber } from './assets.mjs';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d'), ui = $('game-ui');
@@ -33,6 +33,8 @@ function updateControls() {
 function paintControls() {
   if (!loaded) return;
   document.querySelectorAll('[data-sprite]').forEach(c => {
+    const sprite = SPRITES[c.dataset.sprite];
+    c.width = sprite.width; c.height = sprite.height;
     const context = c.getContext('2d'); context.clearRect(0, 0, c.width, c.height);
     drawSprite(context, c.dataset.sprite, 0, 0);
   });
@@ -44,7 +46,7 @@ function resize() {
   canvas.width = Math.round(rect.width * view.dpr); canvas.height = Math.round(rect.height * view.dpr);
   game.resize(view.width, view.height);
   ui.style.width = `${view.width}px`; ui.style.height = `${view.height}px`; ui.style.transform = `scale(${view.scale})`;
-  ui.style.setProperty('--buttons-y', `${game.ground - 86}px`);
+  ui.style.setProperty('--buttons-y', `${game.ground - 88}px`);
   paintControls();
 }
 new ResizeObserver(resize).observe($('game-frame'));
@@ -92,8 +94,8 @@ function frame(time) {
       drawSprite(ctx, 'title', width / 2 - 89, center - 100);
       drawBird(ctx, width / 2, center - 8 + (reducedMotion ? 0 : Math.sin(clock * 3) * 4), wing);
     } else if (screen === 'ready') {
-      drawSprite(ctx, 'ready', width / 2 - 92, center - 110);
-      drawSprite(ctx, 'tutorial', width / 2 - 56, center - 36);
+      drawSprite(ctx, 'ready', width / 2 - 98, center - 112);
+      drawSprite(ctx, 'tutorial', width / 2 - 57, center - 36);
       drawBird(ctx, game.bird.x, game.bird.y + (reducedMotion ? 0 : Math.sin(clock * 3) * 3), wing);
     } else {
       const falling = ['falling', 'over'].includes(game.state);
@@ -104,9 +106,9 @@ function frame(time) {
   }
   drawGround(ctx, width, ground, distance);
   if (screen === 'over' && loaded) {
-    drawSprite(ctx, 'over', width / 2 - 96, center - 100);
+    drawSprite(ctx, 'over', width / 2 - 102, center - 102);
     const x = width / 2 - 113, y = center - 20;
-    drawSprite(ctx, 'scorePanel', x, y);
+    drawSprite(ctx, 'scorePanel', x - 6, y - 2);
     const medal = finalScore >= 40 ? 'platinum' : finalScore >= 30 ? 'gold' : finalScore >= 20 ? 'silver' : finalScore >= 10 ? 'bronze' : null;
     if (medal) drawSprite(ctx, medal, x + 26, y + 42);
     drawNumber(ctx, finalScore, x + 210, y + 35, .5, 'right');

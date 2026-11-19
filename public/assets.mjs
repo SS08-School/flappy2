@@ -9,18 +9,19 @@ export const SPRITES = {
   pipeTop: { x: 112, y: 646, width: 52, height: 320 },
   pipeBottom: { x: 168, y: 646, width: 52, height: 320 },
   title: { x: 702, y: 182, width: 178, height: 48 },
-  ready: { x: 590, y: 118, width: 184, height: 50 },
-  over: { x: 790, y: 118, width: 192, height: 50 },
-  tutorial: { x: 584, y: 182, width: 112, height: 100 },
-  play: { x: 708, y: 236, width: 104, height: 58 },
+  ready: { x: 584, y: 116, width: 196, height: 62 },
+  over: { x: 784, y: 116, width: 204, height: 54 },
+  tutorial: { x: 584, y: 182, width: 114, height: 100 },
+  play: { x: 702, y: 234, width: 116, height: 70 },
   menu: { x: 924, y: 52, width: 80, height: 28 },
-  scorePanel: { x: 6, y: 518, width: 226, height: 114 },
-  platinum: { x: 242, y: 518, width: 44, height: 44 },
-  gold: { x: 242, y: 566, width: 44, height: 44 },
+  scorePanel: { x: 0, y: 516, width: 238, height: 126 },
+  platinum: { x: 242, y: 516, width: 44, height: 44 },
+  gold: { x: 242, y: 564, width: 44, height: 44 },
   silver: { x: 224, y: 906, width: 44, height: 44 },
   bronze: { x: 224, y: 954, width: 44, height: 44 },
   new: { x: 224, y: 1002, width: 32, height: 14 },
 };
+// Every score glyph is cropped from the uploaded atlas; no font-rendered digits.
 const DIGITS = [[992,120,24],[272,910,16],[584,320,24],[612,320,24],[640,320,24],[668,320,24],[584,368,24],[612,368,24],[640,368,24],[668,368,24]];
 let atlas, loading;
 export function loadAssets() {

@@ -22,6 +22,8 @@ All visible labels and numbers come from the official sprite sheet. Accessibilit
 
 ## Display
 
+The viewport is temporarily locked to the original **9:16 portrait ratio** for accuracy testing, with black letterboxing. The `aspect-locked` class on `<body>` controls this lock; leave it enabled until testing is complete.
+
 The original 288 × 512 logical viewport defines a single uniform scale: bird 34 × 24, pipes 52 wide, ground 112 high. Wide screens extend the repeating scenery horizontally; tall screens add sky. Sprites retain their proportions. The canvas fills the viewport without scrolling and uses nearest-neighbor image rendering.
 
 ## Source and verification

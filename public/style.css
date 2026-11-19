@@ -12,3 +12,6 @@ canvas{image-rendering:pixelated}
 .sprite-button:focus-visible{outline:2px solid #fff;outline-offset:3px}
 #menu-button{position:absolute;right:10px;top:10px}
 #play-controls{position:absolute;left:50%;top:var(--buttons-y);transform:translateX(-50%)}
+/* Temporary original-phone viewport for accuracy checks; remove the body class to unlock. */
+body.aspect-locked{background:#000}
+.aspect-locked #game-frame{inset:auto;left:50%;top:50%;width:min(100vw,56.25dvh);height:min(100dvh,177.7777777778vw);transform:translate(-50%,-50%)}
