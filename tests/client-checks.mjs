@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
 
-export async function createClient({ reducedMotion = true, width = 480, height = 640 } = {}) {
+export async function createClient({ reducedMotion = true, width = 480, height = 640, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
   const elements = new Map(), frames = [], stored = new Map(), images = [], events = new Map();
   let rect = { width, height }, now = 0, document;
   function makeContext() {
@@ -42,6 +42,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
   };
   const sandbox = {
     document, devicePixelRatio:1, Game, METRICS, PHYSICS, viewportLayout, console, performance:{now:()=>0},
+    GameAudio: class { constructor() { return audio; } }, DEATH_SOUND_DELAY: .2,
     matchMedia:()=>({matches:reducedMotion}), ResizeObserver:class { observe() {} },
     requestAnimationFrame:callback=>frames.push(callback),
     localStorage:{getItem:key=>stored.get(key)||null,setItem:(key,value)=>stored.set(key,value)},
@@ -51,8 +52,9 @@ export async function createClient({ reducedMotion = true, width = 480, height =
   const assets=(await readFile(new URL('../public/assets.mjs',import.meta.url),'utf8')).replace(/^export /gm,'');
   const transitions=(await readFile(new URL('../public/transitions.mjs',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/\bclamp\b/g,'transitionClamp');
   const presentation=(await readFile(new URL('../public/bird-presentation.mjs',import.meta.url),'utf8')).replace(/^export /gm,'').replace(/\bclamp\b/g,'birdClamp');
+  const medal=(await readFile(new URL('../public/medal-presentation.mjs',import.meta.url),'utf8')).replace(/^export /gm,'');
   const client=(await readFile(new URL('../public/game.js',import.meta.url),'utf8')).replace(/^import .*;\r?$/gm,'');
-  const controller=await new vm.Script(`(async()=>{${assets}\n${transitions}\nconst TIMING=TRANSITION_TIMING;\n${presentation}\n${client}\nreturn {game,prepareRun,flap,resize,screen:()=>screen};})()`).runInNewContext(sandbox);
+  const controller=await new vm.Script(`(async()=>{${assets}\n${transitions}\nconst TIMING=TRANSITION_TIMING;\n${presentation}\n${medal}\n${client}\nreturn {game,prepareRun,flap,resize,screen:()=>screen};})()`).runInNewContext(sandbox);
   await Promise.resolve();
   return {controller,elements,events,stored,images,
     tick(seconds) { now+=seconds*1000; frames.shift()(now); },
@@ -88,4 +90,25 @@ export async function checkClient({ reducedMotion = true } = {}) {
   assert.equal(controller.screen(),'ready');
   assert.equal(elements.get('menu-overlay'),undefined); assert.equal(elements.get('save-status'),undefined);
   return `Reference client (${reducedMotion?'reduced':'full'} motion): black-bar input, Escape safety, scenes, results, sprite-only UI and silent BEST passed.`;
+}
+
+export async function checkGroundLoop() {
+  for (const [width, height] of [[390,520],[480,640],[517,689.3333333333]]) {
+    const c = await createClient({ width, height });
+    for (let frame=1;frame<=350;frame++) {
+      c.tick(1/60);
+      const tiles = c.elements.get('game').context.commands.filter(command => command.kind === 'image' && command.args[0] === 584 && command.args[1] === 0 && command.args[2] === 336 && command.args[3] === 112);
+      assert.equal(tiles.length, 1, 'one continuous ground draw across portrait viewport, including wraps');
+      const [,,,,left,,tileWidth] = tiles[0].args;
+      assert.ok(left <= 0 && left + tileWidth >= c.controller.game.width, 'ground covers both viewport edges');
+      assert.ok(Math.abs((left + frame * 2) % 24) < 1e-7, 'stripe phase stays continuous through every wrap');
+    }
+  }
+  const wide = await createClient({ width:1920, height:1080 }); wide.tick(.1);
+  const tiles = wide.elements.get('game').context.commands.filter(command => command.kind === 'image' && command.args[0] === 584 && command.args[2] === 336);
+  for (let i=1;i<tiles.length;i++) {
+    assert.ok(tiles[i-1].args[4] + tiles[i-1].args[6] - tiles[i].args[4] >= 24, 'wider views overlap matching stripes instead of exposing tile edges');
+    assert.equal((tiles[i].args[4] - tiles[i-1].args[4]) % 24, 0);
+  }
+  return 'Ground: repeated wraps at fractional portrait scales and matching overlapped widescreen tiles passed.';
 }

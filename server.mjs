@@ -3,12 +3,15 @@ import { readFile } from 'node:fs/promises';
 import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ASSET_FILES } from './public/assets.mjs';
+import { SOUND_FILES } from './public/audio.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 export async function createApp() {
   const files = { '/': 'index.html', '/index.html': 'index.html', '/style.css': 'style.css', '/game.js': 'game.js', '/engine.mjs': 'engine.mjs', '/assets.mjs': 'assets.mjs', '/transitions.mjs': 'transitions.mjs', '/bird-presentation.mjs': 'bird-presentation.mjs' };
   for (const asset of ASSET_FILES) files[`/assets/flappy/${asset}`] = `assets/flappy/${asset}`;
-  const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png' };
+  files['/audio.mjs'] = 'audio.mjs'; files['/medal-presentation.mjs'] = 'medal-presentation.mjs';
+  for (const file of Object.values(SOUND_FILES)) files[`/assets/audio/${file}`] = `assets/audio/${file}`;
+  const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg' };
   const server = http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'same-origin');

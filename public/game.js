@@ -2,6 +2,8 @@ import { Game, METRICS, PHYSICS, viewportLayout } from './engine.mjs';
 import { SPRITES, loadAssets, drawSprite, drawBird, drawBackground, drawGround, drawPipe, drawNumber } from './assets.mjs';
 import { TRANSITION_TIMING as TIMING, resultPresentation, transitionEase } from './transitions.mjs';
 import { flapAngle, impactPresentation, wingPose, idleBob } from './bird-presentation.mjs';
+import { GameAudio, DEATH_SOUND_DELAY } from './audio.mjs';
+import { MedalGlimmer } from './medal-presentation.mjs';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d'), ui = $('game-ui');
@@ -12,6 +14,8 @@ let best = 0, previousBest = 0, finalScore = 0, newBest = false;
 let scene = { phase: reducedMotion ? 'idle' : 'in', elapsed: 0 }, sceneBlack = reducedMotion ? 0 : 1;
 let readyAge = 0, readyExitAge = null, flapElapsed = Infinity;
 let birdTilt = 0, lastWing = 0, impact = null;
+const audio = new GameAudio();
+let glimmer = new MedalGlimmer();
 
 try {
   const saved = localStorage.getItem('flappy-best');
@@ -21,11 +25,18 @@ try {
 } catch {}
 
 const game = new Game({ onEvent(type, data) {
+  if (type === 'flap') audio.play('wing');
   if (type === 'hit') {
-    impact = { elapsed: 0, startingAngle: birdTilt, wing: lastWing };
+    audio.play('hit');
+    // Ground-only crashes have no subsequent falling whistle.
+    if (game.bird.y + game.bird.radius < game.ground) audio.play('die', DEATH_SOUND_DELAY);
+    impact = { elapsed: 0, startingAngle: birdTilt, wing: lastWing, headerSound: false, panelSound: false };
     previousBest = best; finalScore = game.score; screen = 'hit'; updateControls();
   }
-  if (type === 'score') canvas.setAttribute('aria-label', `Score ${data.score}. Tap, Space, or Up to flap.`);
+  if (type === 'score') {
+    audio.play('point');
+    canvas.setAttribute('aria-label', `Score ${data.score}. Tap, Space, or Up to flap.`);
+  }
   if (type === 'over') {
     if (!impact) { impact = { elapsed: 0, startingAngle: birdTilt, wing: lastWing }; previousBest = best; }
     screen = 'over'; finalScore = data.score; newBest = finalScore > previousBest;
@@ -74,15 +85,18 @@ function showReady() {
   game.reset(); screen = 'ready';
   night = rounds++ > 0 && Math.random() < .5;
   readyAge = 0; readyExitAge = null; flapElapsed = Infinity; birdTilt = 0; impact = null;
+  glimmer = new MedalGlimmer();
   updateControls(); canvas.focus({ preventScroll: true });
 }
 function prepareRun() {
   if (!loaded || scene.phase !== 'idle' || !['home', 'over'].includes(screen)) return;
   if (screen === 'over' && !resultState().finished) return;
+  audio.unlock(); audio.stop(); audio.play('swoosh');
   if (reducedMotion) { showReady(); return; }
   scene = { phase: 'out', elapsed: 0 }; updateControls();
 }
 function flap() {
+  audio.unlock();
   if (!loaded) { initializeAssets(); return; }
   if (scene.phase !== 'idle') return;
   if (screen === 'ready') {
@@ -130,9 +144,8 @@ function renderResults(xOffset, yOffset) {
     ctx.save(); ctx.globalAlpha = result.medalOpacity;
     drawSprite(ctx, medal, 57 + 22 * (1 - result.medalScale), 174 + 22 * (1 - result.medalScale), result.medalScale);
     if (!reducedMotion && result.finished) {
-      const sparkle = (impact.elapsed % 1.2) / 1.2;
-      ctx.globalAlpha *= Math.max(0, 1 - Math.abs(sparkle - .5) * 5);
-      drawSprite(ctx, 'sparkle', 59 + 30 * sparkle, 176 + 28 * sparkle);
+      const sparkle = glimmer.sample(impact.elapsed - result.finishedAt);
+      drawSprite(ctx, sparkle.sprite, 57 + sparkle.x, 174 + sparkle.y);
     }
     ctx.restore();
   }
@@ -147,6 +160,15 @@ function frame(time) {
   if (impact) impact.elapsed += elapsed;
   const oldDistance = game.distance;
   game.update(dt);
+  if (impact) {
+    for (const [flag, delay] of [['headerSound', TIMING.headerDelay], ['panelSound', TIMING.panelDelay]]) {
+      if (!impact[flag] && impact.elapsed >= delay) {
+        impact[flag] = true;
+        // Do not replay missed sounds after a background-tab pause.
+        if (impact.elapsed - delay < .15) audio.play('swoosh');
+      }
+    }
+  }
   if (!impact) landDistance += game.state === 'playing' ? game.distance - oldDistance : PHYSICS.speed * dt;
   updateControls();
   const factor = view.scale * view.dpr;
@@ -189,6 +211,6 @@ function frame(time) {
 }
 requestAnimationFrame(frame);
 function initializeAssets() {
-  loadAssets().then(() => { loaded = true; updateControls(); paintControls(); }).catch(error => console.error(error));
+  Promise.all([loadAssets(), audio.ready]).then(() => { loaded = true; updateControls(); paintControls(); }).catch(error => console.error(error));
 }
 initializeAssets();

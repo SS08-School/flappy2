@@ -1,6 +1,6 @@
 # Flappy Bird — v1.3 reference build
 
-Silent recreation of the [supplied gameplay reference](https://www.youtube.com/watch?v=8nJhk_u4krI), using only the uploaded official sprite sheet. The bird stays yellow. Recording watermarks are omitted.
+Recreation of the [supplied gameplay reference](https://www.youtube.com/watch?v=8nJhk_u4krI), using the uploaded official sprite sheet and supplied sound effects. The bird stays yellow. Recording watermarks are omitted.
 
 ## Run
 
@@ -14,7 +14,7 @@ Open **http://localhost:3000**. `npm run dev` restarts the server on source chan
 
 ## Controls
 
-Select Play, then click or tap anywhere, including the black bars, or press Space/Up to flap. **Escape does nothing and never resets the run.** Rate and leaderboard buttons are visual placeholders, as requested. Sound remains off.
+Select Play, then click or tap anywhere, including the black bars, or press Space/Up to flap. **Escape does nothing and never resets the run.** Rate and leaderboard buttons are visual placeholders, as requested. Sound unlocks on interaction; the idle bird animation is silent.
 
 ## Reference measurements
 
@@ -36,9 +36,15 @@ The viewport is locked to the video's **3:4** shape, at a native **288 × 384** 
 
 The skyline is stationary; ground and pipes move at the same speed. Day and night backgrounds use the uploaded atlas, with daytime on the first run and random variants afterward. The title includes the original Rate, Play, leaderboard and copyright graphics. All visible words and digits come from the sheet.
 
+The ground scroll wraps at the atlas's 24-pixel pattern repeat, keeping a single draw across the locked viewport and overlapping matching repeats in wider views to prevent seams. Touching the top edge ends control and triggers the hit/death fall, just like a pipe collision.
+
 Screen changes fade through black. The Game Over heading, slide-up card, score count-up, medal and buttons appear in the reference order. Numeric timings are measured from a compressed 30 fps recording, so they are approximations rather than recovered original source constants.
 
-BEST persists silently in browser local storage. There are no accounts, custom dialogs, powerups, unlocks, extra lives, difficulty ramps, downloaded graphics, fonts or audio. Existing ignored database files remain untouched.
+Each actual flap plays wing, each passed pipe plays point, and a collision plays hit once. Pipe collisions add the falling death sound 0.2 seconds later; direct ground crashes only play hit. Play/replay transitions, the Game Over heading and the scorecard each play swoosh. The supplied files are copied unchanged into `public/assets/audio/`; playback skips leading padding, including 120 ms in the point recording. Web Audio preloads and decodes the files, supports overlapping flaps, and cancels active/pending sounds on replay. Missing audio support does not block gameplay.
+
+The medal glimmer follows the supplied `17-57-55` capture: small, medium, large, medium, small official sparkle frames at 10 Hz. Each half-second pulse stays at one random position, then jumps to a new position around the medal. It starts with the awarded medal and is omitted for reduced motion.
+
+BEST persists silently in browser local storage. There are no accounts, custom dialogs, powerups, unlocks, extra lives, difficulty ramps, downloaded graphics or fonts. Existing ignored database files remain untouched.
 
 ## Verify
 
@@ -46,6 +52,6 @@ BEST persists silently in browser local storage. There are no accounts, custom d
 npm test
 ```
 
-Checks cover the first-hit loss, delayed pipes, fixed spacing/speed, 60 Hz stepping, portrait sizing, Escape behavior, black-bar input, scene/result staging, official atlas integrity and static-file access. Client checks use DOM/canvas test doubles; they do not replace visual browser verification.
+Checks cover the first-hit loss, delayed pipes, fixed spacing/speed, 60 Hz stepping, portrait sizing, Escape behavior, black-bar input, scene/result staging, official atlas integrity, audio delivery and events, audio unlock/cancellation, and stationary glimmer pulses. Client checks use DOM/canvas and audio test doubles; they do not replace browser playback verification.
 
 `public/engine.mjs` contains physics, `public/assets.mjs` defines official crops, `public/game.js` renders the reference screens, and the presentation modules contain visual timing. See [ASSET_CREDITS.md](ASSET_CREDITS.md).

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
 import { createApp } from '../server.mjs';
 import { ASSET_FILES, SPRITES } from '../public/assets.mjs';
+import { SOUND_FILES } from '../public/audio.mjs';
 
 export function checkEngine() {
   const events = [], game = new Game({ random: () => .5, onEvent: (type, data) => events.push({ type, data }) });
@@ -23,6 +24,17 @@ export function checkEngine() {
   assert.ok(trajectories.every(t=>Math.abs(t.y-trajectories[0].y)<1e-9&&t.distance===trajectories[0].distance),'30/60/120 Hz renders produce identical physics');
   game.start(); game.bird.y = game.ground - 1; game.bird.vy = 100; game.update(.02);
   assert.equal(game.state, 'over', 'first ground collision ends the run');
+  game.start(); game.score = 7; game.bird.y = game.bird.radius + 1;
+  const topEvents = events.length;
+  game.update(PHYSICS.step);
+  assert.equal(game.state, 'falling', 'top edge collision kills the bird');
+  assert.equal(game.bird.y, game.bird.radius, 'collision keeps the bird on screen');
+  const topDistance = game.distance;
+  game.flap(); assert.equal(game.bird.vy, 0, 'top collision disables flapping immediately');
+  for (let i=0;i<100;i++) game.update(PHYSICS.step);
+  assert.equal(game.state, 'over'); assert.equal(game.score, 7); assert.equal(game.distance, topDistance);
+  assert.equal(events.slice(topEvents).filter(e => e.type === 'hit').length, 1);
+  assert.equal(events.slice(topEvents).filter(e => e.type === 'over').length, 1);
   game.start(); game.pipes = [{ x: game.bird.x - 20, center: game.bird.y, gap: 100, width: 52, scored: false }];
   game.update(.02); assert.equal(game.score, 1); game.update(.02); assert.equal(game.score, 1, 'one point per pipe');
   game.start(); game.score = 999; game.update(PHYSICS.step);
@@ -46,7 +58,7 @@ export function checkEngine() {
   game.resize(910,384); assert.ok(Math.abs(pipe.x - game.bird.x - relativeX) < .001);
   assert.equal(game.state, 'playing', 'resize preserves the run without a menu');
   game.reset(); assert.equal(game.state, 'ready'); assert.equal(game.score, 0); assert.equal(game.pipes.length, 0);
-  return 'Original rules: first-hit loss, death fall, fixed speed, scoring, reset, and widescreen geometry passed.';
+  return 'Game rules: pipe/ground/ceiling loss, death fall, fixed speed, scoring, reset, and widescreen geometry passed.';
 }
 
 export async function checkAssets() {
@@ -73,6 +85,13 @@ export async function checkServer() {
     const sprite = await fetch(base + '/assets/flappy/official-v1.3.png'); assert.equal(sprite.status, 200); assert.equal(sprite.headers.get('content-type'), 'image/png');
     assert.deepEqual(Buffer.from(await sprite.arrayBuffer()), await readFile(new URL('../public/assets/flappy/official-v1.3.png', import.meta.url)));
     const head = await fetch(base + '/assets/flappy/official-v1.3.png', { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal((await head.arrayBuffer()).byteLength, 0);
+    for (const file of Object.values(SOUND_FILES)) {
+      const sound = await fetch(base + '/assets/audio/' + file);
+      assert.equal(sound.status, 200);
+      assert.equal(sound.headers.get('content-type'), file.endsWith('.ogg') ? 'audio/ogg' : 'audio/mpeg');
+      assert.deepEqual(Buffer.from(await sound.arrayBuffer()), await readFile(new URL('../public/assets/audio/' + file, import.meta.url)));
+    }
+    for (const file of ['audio.mjs','medal-presentation.mjs']) assert.equal((await fetch(base + '/' + file)).status, 200);
     for (const path of ['/server.mjs','/data/flabby.sqlite','/api/me','/api/leaderboard','/assets/flappy/sfx_wing.wav','/assets/flappy/%2e%2e%2fserver.mjs']) assert.equal((await fetch(base + path)).status, 404, `${path} is unavailable`);
     assert.equal((await fetch(base + '/api/register', { method: 'POST' })).status, 405);
     return 'Server: static game, official atlas, removed APIs, private-file protection, and no session cookies passed.';

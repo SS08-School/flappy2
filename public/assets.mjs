@@ -3,6 +3,8 @@
 const ROOT = '/assets/flappy/';
 export const ASSET_FILES = ['official-v1.3.png'];
 export const SPRITES = {
+  sparkleSmall: { x: 276, y: 682, width: 10, height: 10 },
+  sparkleMedium: { x: 276, y: 734, width: 10, height: 10 },
   yellow: { width: 34, height: 24, frames: [[6, 982], [62, 982], [118, 982]] },
   day: { x: 0, y: 0, width: 288, height: 512 },
   night: { x: 292, y: 0, width: 288, height: 512 },
@@ -65,8 +67,12 @@ export function drawBackground(ctx, width, height, ground, night = false) {
 }
 export function drawGround(ctx, width, ground, distance) {
   if (!atlas) return;
-  const offset = distance % SPRITES.ground.width;
-  for (let x = -offset; x < width; x += SPRITES.ground.width) drawSprite(ctx, 'ground', x, ground);
+  // The atlas pattern repeats every 24 native pixels. Wrap at that period so
+  // one sprite covers the locked viewport throughout the loop. Wider views
+  // overlap one full repeat, preventing fractional-scale tile-edge seams.
+  const period = 24, stride = SPRITES.ground.width - period;
+  const offset = Math.round(distance) % period;
+  for (let x = -offset; x < width; x += stride) drawSprite(ctx, 'ground', x, ground);
 }
 export function drawPipe(ctx, x, y, width, height, up = false, alpha = 1) {
   if (!atlas || height <= 0) return;

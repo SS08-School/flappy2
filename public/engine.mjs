@@ -31,7 +31,10 @@ export class Game {
     }
   }
   start() { this.reset(); this.state = 'playing'; this.flap(); }
-  flap() { if (this.state === 'playing') this.bird.vy = PHYSICS.flap; }
+  flap() {
+    if (this.state !== 'playing') return;
+    this.bird.vy = PHYSICS.flap; this.onEvent('flap');
+  }
   end() {
     if (this.state === 'over') return;
     this.state = 'over'; this.onEvent('over', { score: this.score });
@@ -53,6 +56,9 @@ export class Game {
   step(dt) {
     this.bird.vy += PHYSICS.gravity * dt;
     this.bird.y += this.bird.vy * dt;
+    if (this.state === 'playing' && this.bird.y - this.bird.radius <= 0) {
+      this.bird.y = this.bird.radius; this.hit();
+    }
     if (this.state === 'playing') {
       const delta = PHYSICS.speed * dt;
       this.distance += delta; this.elapsed += dt;
@@ -73,7 +79,6 @@ export class Game {
         }
       }
       this.pipes = this.pipes.filter(pipe => pipe.x > -METRICS.pipeWidth);
-      if (this.bird.y < this.bird.radius) { this.bird.y = this.bird.radius; this.bird.vy = Math.max(0, this.bird.vy); }
     }
     if (this.bird.y + this.bird.radius >= this.ground) {
       if (this.state === 'playing') this.hit();

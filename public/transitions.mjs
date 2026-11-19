@@ -25,7 +25,7 @@ export function resultPresentation(elapsed, score = 0, reducedMotion = false) {
     cardVisible: reducedMotion || elapsed >= t.panelDelay,
     cardY: 254 * (1 - transitionEase(card)),
     displayScore: countProgress === 1 ? score : Math.floor(score * countProgress),
-    finished, replayOpacity: buttons,
+    finished, finishedAt: doneAt, replayOpacity: buttons,
     medalOpacity: medal, medalScale: 1 + .25 * (1 - transitionEase(medal)),
   };
 }
