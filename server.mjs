@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { DatabaseSync } from 'node:sqlite';
+import { ASSET_FILES } from './public/assets.mjs';
+import { SKINS } from './public/engine.mjs';
 
 const scrypt = promisify(scryptCallback);
 const root = dirname(fileURLToPath(import.meta.url));
@@ -22,7 +24,8 @@ export async function createApp({ database = resolve(root, 'data/flabby.sqlite')
     CREATE TABLE IF NOT EXISTS runs (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), started INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS scores (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), score INTEGER NOT NULL, week TEXT NOT NULL, created INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS scores_week ON scores(week, user_id, score);
-    CREATE TABLE IF NOT EXISTS rewards (user_id INTEGER NOT NULL REFERENCES users(id), week TEXT NOT NULL, rank INTEGER NOT NULL, UNIQUE(user_id, week));`);
+    CREATE TABLE IF NOT EXISTS rewards (user_id INTEGER NOT NULL REFERENCES users(id), week TEXT NOT NULL, rank INTEGER NOT NULL, UNIQUE(user_id, week));
+    UPDATE users SET skin='classic' WHERE skin NOT IN ('classic','rose','blue');`);
   const limits = new Map();
   let requests = 0;
   const currentWeek = () => weekStart(new Date(now()));
@@ -73,8 +76,7 @@ export async function createApp({ database = resolve(root, 'data/flabby.sqlite')
       if (!path.startsWith('/api/')) {
         if (req.method !== 'GET' && req.method !== 'HEAD') fail(405, 'Method not allowed.');
         const files = { '/': 'index.html', '/index.html': 'index.html', '/style.css': 'style.css', '/game.js': 'game.js', '/engine.mjs': 'engine.mjs', '/assets.mjs': 'assets.mjs' };
-        const bundledAssets = ['og-theme.png', 'og-theme-2.png', 'sfx_wing.wav', 'sfx_point.wav', 'sfx_hit.wav', 'sfx_die.wav', 'sfx_swooshing.wav'];
-        for (const asset of bundledAssets) files[`/assets/flappy/${asset}`] = `assets/flappy/${asset}`;
+        for (const asset of ASSET_FILES) files[`/assets/flappy/${asset}`] = `assets/flappy/${asset}`;
         if (!Object.hasOwn(files, path)) fail(404, 'Page not found.');
         const file = files[path], content = await readFile(resolve(root, 'public', file));
         res.writeHead(200, { 'Content-Type': { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.wav': 'audio/wav' }[extname(file)], 'Cache-Control': 'no-cache', 'Content-Length': content.length });
@@ -147,8 +149,8 @@ export async function createApp({ database = resolve(root, 'data/flabby.sqlite')
       }
       if (path === '/api/skin' && req.method === 'POST') {
         const { skin } = await readBody(req);
-        const thresholds = { classic: 0, mint: 10, rose: 25, blue: 50, lavender: 100, gold: 200 };
-        if (!Object.hasOwn(thresholds, skin) || profile(userId).best < thresholds[skin]) fail(400, 'This outfit is still locked.');
+        const outfit = SKINS.find(candidate => candidate.id === skin);
+        if (!outfit || profile(userId).best < outfit.threshold) fail(400, 'This bird is still locked.');
         db.prepare('UPDATE users SET skin=? WHERE id=?').run(skin, userId);
         return json(res, 200, { user: profile(userId) });
       }

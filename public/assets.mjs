@@ -1,135 +1,139 @@
-import { drawBird as drawFallbackBird } from './engine.mjs';
-
-// Sprite coordinates in noanonoa/flappy-bird's bundled Flappy Bird atlases.
-// See ASSET_CREDITS.md for the pinned upstream revision and original sources.
+// All graphics come directly from the user-supplied official v1.3 atlas.
+// Coordinates are native pixels; the viewport applies one uniform scale.
 const ROOT = '/assets/flappy/';
-export const ASSET_FILES = [
-  'og-theme.png', 'og-theme-2.png', 'sfx_wing.wav', 'sfx_point.wav',
-  'sfx_hit.wav', 'sfx_die.wav', 'sfx_swooshing.wav',
-];
+export const ASSET_FILES = ['official-v1.3.png', 'sfx_wing.wav', 'sfx_point.wav', 'sfx_hit.wav', 'sfx_die.wav', 'sfx_swooshing.wav'];
 export const SPRITES = {
-  yellow: { sheet: 'original', width: 34, height: 24, frames: [[276, 114], [276, 140], [276, 166]] },
-  red: { sheet: 'alternate', width: 18, height: 12, frames: [[115, 381], [115, 407], [115, 433]] },
-  blue: { sheet: 'alternate', width: 18, height: 12, frames: [[87, 491], [115, 329], [115, 355]] },
-  day: { x: 0, y: 0, width: 144, height: 256 },
-  night: { x: 146, y: 0, width: 144, height: 256 },
-  ground: { x: 276, y: 0, width: 224, height: 112 },
+  yellow: { width: 34, height: 24, frames: [[6, 982], [62, 982], [118, 982]] },
+  red: { width: 34, height: 24, frames: [[230, 762], [230, 814], [230, 866]] },
+  blue: { width: 34, height: 24, frames: [[174, 982], [230, 658], [230, 710]] },
+  day: { x: 0, y: 0, width: 288, height: 512 },
+  night: { x: 292, y: 0, width: 288, height: 512 },
+  ground: { x: 584, y: 0, width: 336, height: 112 },
+  pipeTop: { x: 112, y: 646, width: 52, height: 320 },
+  pipeBottom: { x: 168, y: 646, width: 52, height: 320 },
+  title: { x: 702, y: 182, width: 178, height: 44 },
+  ready: { x: 590, y: 118, width: 184, height: 50 },
+  over: { x: 790, y: 118, width: 192, height: 50 },
+  tutorial: { x: 584, y: 182, width: 112, height: 100 },
+  play: { x: 708, y: 236, width: 104, height: 58 },
+  leaderboard: { x: 828, y: 236, width: 104, height: 58 },
+  menu: { x: 924, y: 52, width: 80, height: 28 },
+  scorePanel: { x: 6, y: 518, width: 226, height: 114 },
+  platinum: { x: 242, y: 518, width: 44, height: 44 },
+  gold: { x: 242, y: 566, width: 44, height: 44 },
+  silver: { x: 224, y: 906, width: 44, height: 44 },
+  bronze: { x: 224, y: 954, width: 44, height: 44 },
+  new: { x: 224, y: 1002, width: 32, height: 14 },
 };
-const sheets = {};
-const birdFrames = new Map();
-let loading;
-
-function loadImage(name) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`Could not load ${name}`));
-    image.src = ROOT + name;
-  });
-}
+const DIGITS = [[992,120,24],[272,910,16],[584,320,24],[612,320,24],[640,320,24],[668,320,24],[584,368,24],[612,368,24],[640,368,24],[668,368,24]];
+let atlas, loading;
 export function loadAssets() {
-  loading ||= Promise.all([
-    loadImage('og-theme.png').then(image => sheets.original = image),
-    loadImage('og-theme-2.png').then(image => sheets.alternate = image),
-  ]);
+  loading ||= new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => { atlas = image; resolve(image); };
+    image.onerror = () => { loading = null; reject(new Error('Sprite sheet failed to load.')); };
+    image.src = ROOT + 'official-v1.3.png';
+  });
   return loading;
 }
-
-function framesFor(skin) {
-  if (birdFrames.has(skin.id)) return birdFrames.get(skin.id);
-  const base = skin.id === 'rose' ? 'red' : ['blue', 'lavender'].includes(skin.id) ? 'blue' : 'yellow';
-  const sprite = SPRITES[base], source = sheets[sprite.sheet];
-  if (!source) return null;
-  const tint = ['mint', 'lavender', 'gold'].includes(skin.id);
-  const rgb = skin.color.match(/[a-f0-9]{2}/gi).map(hex => parseInt(hex, 16));
-  const frames = sprite.frames.map(([x, y]) => {
-    const frame = document.createElement('canvas'); frame.width = sprite.width; frame.height = sprite.height;
-    const c = frame.getContext('2d', { willReadFrequently: tint });
-    c.drawImage(source, x, y, sprite.width, sprite.height, 0, 0, sprite.width, sprite.height);
-    if (tint) {
-      const pixels = c.getImageData(0, 0, frame.width, frame.height);
-      for (let p = 0; p < pixels.data.length; p += 4) {
-        const [r, g, b, a] = pixels.data.subarray(p, p + 4);
-        const body = base === 'blue' ? b > 100 && b > r * 1.1 : r > 180 && g > 150 && b < 160;
-        if (!a || !body) continue;
-        const light = Math.min(1.12, Math.max(.55, (r + g + b) / (base === 'blue' ? 460 : 490)));
-        pixels.data[p] = Math.min(255, rgb[0] * light);
-        pixels.data[p + 1] = Math.min(255, rgb[1] * light);
-        pixels.data[p + 2] = Math.min(255, rgb[2] * light);
-      }
-      c.putImageData(pixels, 0, 0);
-    }
-    return frame;
-  });
-  birdFrames.set(skin.id, frames);
-  return frames;
+export function drawSprite(ctx, name, x, y, scale = 1) {
+  if (!atlas) return;
+  const s = SPRITES[name];
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(atlas, s.x, s.y, s.width, s.height, Math.round(x), Math.round(y), s.width * scale, s.height * scale);
 }
-
-export function drawBird(ctx, x, y, scale, skin, wing = 0, angle = 0, alpha = 1) {
-  const frames = framesFor(skin);
-  if (!frames) return drawFallbackBird(ctx, x, y, scale, skin, wing, angle, alpha);
-  const frame = frames[wing > .3 ? 0 : wing < -.3 ? 2 : 1];
-  const width = scale * 19, height = width * frame.height / frame.width;
+export function drawBird(ctx, x, y, skin, wing = 0, angle = 0, alpha = 1) {
+  if (!atlas) return;
+  const s = SPRITES[skin.id === 'rose' ? 'red' : skin.id === 'blue' ? 'blue' : 'yellow'];
+  const [sx, sy] = s.frames[wing > .3 ? 0 : wing < -.3 ? 2 : 1];
   ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(angle);
   ctx.globalAlpha = alpha; ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(frame, -width / 2, -height / 2, width, height); ctx.restore();
+  ctx.drawImage(atlas, sx, sy, s.width, s.height, -17, -12, 34, 24); ctx.restore();
 }
-
-export function drawBackground(ctx, width, ground, distance, night = false) {
-  if (!sheets.alternate) return false;
+export function drawBackground(ctx, width, height, ground, distance, night = false) {
+  ctx.fillStyle = night ? '#008793' : '#4ec0ca'; ctx.fillRect(0, 0, width, height);
+  if (!atlas) return;
   const s = night ? SPRITES.night : SPRITES.day;
-  ctx.save(); ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = night ? '#138792' : '#54c0c9'; ctx.fillRect(0, 0, width, ground);
-  const scale = 2, tileWidth = s.width * scale, tileHeight = s.height * scale;
-  const offset = distance * .15 % tileWidth;
-  for (let x = -offset; x < width; x += tileWidth) {
-    ctx.drawImage(sheets.alternate, s.x, s.y, s.width, s.height, Math.round(x), ground - tileHeight, tileWidth, tileHeight);
+  const offset = distance * .15 % s.width;
+  for (let x = -offset; x < width; x += s.width) {
+    // Anchor the original skyline to the original ground line (400 / 512).
+    // Tall screens gain sky; wide screens gain tiles. Sprite proportions never change.
+    drawSprite(ctx, night ? 'night' : 'day', x, ground - 400);
   }
-  ctx.restore(); return true;
 }
-
 export function drawGround(ctx, width, ground, distance) {
-  if (!sheets.original) return false;
-  const s = SPRITES.ground, tileWidth = s.width * 2, offset = distance % tileWidth;
-  ctx.save(); ctx.imageSmoothingEnabled = false;
-  for (let x = -offset; x < width; x += tileWidth) {
-    ctx.drawImage(sheets.original, s.x, s.y, s.width, s.height, Math.round(x), ground, tileWidth, s.height * 2);
-  }
-  ctx.restore(); return true;
+  if (!atlas) return;
+  const offset = distance % SPRITES.ground.width;
+  for (let x = -offset; x < width; x += SPRITES.ground.width) drawSprite(ctx, 'ground', x, ground);
 }
-
 export function drawPipe(ctx, x, y, width, height, up = false, alpha = 1) {
-  if (!sheets.alternate) return false;
-  if (height <= 0) return true;
-  const sourceX = up ? 56 : 84, capHeight = Math.min(height, (width + 10) / 26 * 12);
-  const shaftHeight = height - capHeight;
+  if (!atlas || height <= 0) return;
+  const s = up ? SPRITES.pipeTop : SPRITES.pipeBottom;
   ctx.save(); ctx.globalAlpha = alpha; ctx.imageSmoothingEnabled = false;
-  if (shaftHeight > 0) {
-    ctx.drawImage(sheets.alternate, sourceX, up ? 323 : 335, 26, 148,
-      Math.round(x - 5), Math.round(up ? y : y + capHeight), width + 10, shaftHeight);
+  const scale = width / s.width, naturalHeight = s.height * scale;
+  if (height <= naturalHeight) {
+    const sourceHeight = height / scale;
+    ctx.drawImage(atlas, s.x, up ? s.y + s.height - sourceHeight : s.y, s.width, sourceHeight,
+      Math.round(x), Math.round(y), width, height);
+  } else {
+    // Extend only the uniform shaft, preserving the native cap and pipe width.
+    const extension = height - naturalHeight;
+    ctx.drawImage(atlas, s.x, up ? s.y : s.y + 30, s.width, 1,
+      Math.round(x), Math.round(up ? y : y + naturalHeight), width, extension);
+    ctx.drawImage(atlas, s.x, s.y, s.width, s.height,
+      Math.round(x), Math.round(up ? y + extension : y), width, naturalHeight);
   }
-  ctx.drawImage(sheets.alternate, sourceX, up ? 471 : 323, 26, 12,
-    Math.round(x - 5), Math.round(up ? y + height - capHeight : y), width + 10, capHeight);
-  ctx.restore(); return true;
+  ctx.restore();
 }
-
-// A small pool permits quick repeated flaps without cutting off the previous sound.
+export function drawNumber(ctx, value, x, y, scale = 1, align = 'center') {
+  if (!atlas) return;
+  const digits = String(Math.max(0, Math.floor(value))).split('').map(n => DIGITS[Number(n)]);
+  const width = (digits.reduce((sum, d) => sum + d[2], 0) + (digits.length - 1) * 4) * scale;
+  let left = x - (align === 'right' ? width : align === 'left' ? 0 : width / 2);
+  for (const [sx, sy, sw] of digits) {
+    ctx.drawImage(atlas, sx, sy, sw, 36, Math.round(left), Math.round(y), sw * scale, 36 * scale);
+    left += (sw + 4) * scale;
+  }
+}
+export function drawPanel(ctx, width, height) {
+  if (!atlas) return;
+  const blit = (sx, sy, sw, sh, x, y, w, h) => ctx.drawImage(atlas, sx, sy, sw, sh, x, y, w, h);
+  ctx.imageSmoothingEnabled = false;
+  blit(140, 580, 1, 1, 8, 8, width - 16, height - 16);
+  blit(14, 518, 210, 8, 8, 0, width - 16, 8);
+  blit(14, 624, 210, 8, 8, height - 8, width - 16, 8);
+  blit(6, 526, 8, 98, 0, 8, 8, height - 16);
+  blit(224, 526, 8, 98, width - 8, 8, 8, height - 16);
+  blit(6, 518, 8, 8, 0, 0, 8, 8); blit(224, 518, 8, 8, width - 8, 0, 8, 8);
+  blit(6, 624, 8, 8, 0, height - 8, 8, 8); blit(224, 624, 8, 8, width - 8, height - 8, 8, 8);
+}
+export function drawButton(ctx, width, height) {
+  if (!atlas) return;
+  // Original orange MENU button, nine-sliced around its printed label.
+  const blit = (sx, sy, sw, sh, x, y, w, h) => ctx.drawImage(atlas, sx, sy, sw, sh, x, y, w, h);
+  ctx.imageSmoothingEnabled = false;
+  blit(930, 58, 1, 1, 4, 4, width - 8, height - 10);
+  blit(928, 52, 72, 4, 4, 0, width - 8, 4);
+  blit(928, 74, 72, 6, 4, height - 6, width - 8, 6);
+  blit(924, 56, 4, 18, 0, 4, 4, height - 10);
+  blit(1000, 56, 4, 18, width - 4, 4, 4, height - 10);
+  blit(924, 52, 4, 4, 0, 0, 4, 4); blit(1000, 52, 4, 4, width - 4, 0, 4, 4);
+  blit(924, 74, 4, 6, 0, height - 6, 4, 6); blit(1000, 74, 4, 6, width - 4, height - 6, 4, 6);
+}
 export function createSoundBank(makeAudio = path => new Audio(path)) {
   const effects = { flap: 'sfx_wing.wav', score: 'sfx_point.wav', hit: 'sfx_hit.wav', over: 'sfx_die.wav', swoosh: 'sfx_swooshing.wav' };
   const pools = new Map(), positions = new Map();
-  for (const [kind, filename] of Object.entries(effects)) {
-    const pool = Array.from({ length: kind === 'flap' ? 4 : 2 }, () => {
-      const effect = makeAudio(ROOT + filename); effect.preload = 'auto'; effect.volume = .35; return effect;
-    });
-    pools.set(kind, pool); positions.set(kind, 0);
+  for (const [kind, file] of Object.entries(effects)) {
+    pools.set(kind, Array.from({ length: kind === 'flap' ? 4 : 2 }, () => {
+      const effect = makeAudio(ROOT + file); effect.preload = 'auto'; effect.volume = .35; return effect;
+    })); positions.set(kind, 0);
   }
   return {
     play(kind) {
-      const pool = pools.get(kind); if (!pool) return false;
+      const pool = pools.get(kind); if (!pool) return;
       const position = positions.get(kind), effect = pool[position];
       positions.set(kind, (position + 1) % pool.length);
       try { effect.currentTime = 0; effect.play()?.catch(() => {}); } catch {}
-      return true;
     },
     stop() { for (const pool of pools.values()) for (const effect of pool) { effect.pause(); effect.currentTime = 0; } },
   };
