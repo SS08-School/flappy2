@@ -6,7 +6,7 @@ import { ASSET_FILES } from './public/assets.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 export async function createApp() {
-  const files = { '/': 'index.html', '/index.html': 'index.html', '/style.css': 'style.css', '/game.js': 'game.js', '/engine.mjs': 'engine.mjs', '/assets.mjs': 'assets.mjs' };
+  const files = { '/': 'index.html', '/index.html': 'index.html', '/style.css': 'style.css', '/game.js': 'game.js', '/engine.mjs': 'engine.mjs', '/assets.mjs': 'assets.mjs', '/transitions.mjs': 'transitions.mjs', '/bird-presentation.mjs': 'bird-presentation.mjs' };
   for (const asset of ASSET_FILES) files[`/assets/flappy/${asset}`] = `assets/flappy/${asset}`;
   const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png' };
   const server = http.createServer(async (req, res) => {

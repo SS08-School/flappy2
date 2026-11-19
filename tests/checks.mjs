@@ -56,7 +56,7 @@ export async function checkServer() {
     const page = await fetch(base); assert.equal(page.status, 200); assert.equal(page.headers.get('set-cookie'), null);
     const html = await page.text(), body = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/)[1];
     assert.equal(body.replace(/<[^>]*>/g, '').trim(), '', 'no visible text outside official image sprites');
-    for (const path of ['/game.js','/engine.mjs','/assets.mjs','/style.css']) assert.equal((await fetch(base + path)).status, 200);
+    for (const path of ['/game.js','/engine.mjs','/assets.mjs','/transitions.mjs','/bird-presentation.mjs','/style.css']) assert.equal((await fetch(base + path)).status, 200);
     const sprite = await fetch(base + '/assets/flappy/official-v1.3.png'); assert.equal(sprite.status, 200); assert.equal(sprite.headers.get('content-type'), 'image/png');
     assert.deepEqual(Buffer.from(await sprite.arrayBuffer()), await readFile(new URL('../public/assets/flappy/official-v1.3.png', import.meta.url)));
     const head = await fetch(base + '/assets/flappy/official-v1.3.png', { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal((await head.arrayBuffer()).byteLength, 0);

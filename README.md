@@ -24,6 +24,10 @@ All visible labels and numbers come from the official sprite sheet. Accessibilit
 
 The viewport is temporarily locked to the original **9:16 portrait ratio** for accuracy testing, with black letterboxing. The `aspect-locked` class on `<body>` controls this lock; leave it enabled until testing is complete.
 
+Screen-transition timing is referenced from [nebez/floppybird's main.js](https://github.com/nebez/floppybird/blob/gh-pages/js/main.js): splash fades, the scorecard slide/fade, staged replay reveal, medal zoom, and replay exit. These are implemented locally for Canvas. No assets, libraries, gameplay, flap-frame animation, or layout from that project are imported. Menu still returns to the title screen immediately and cancels pending transitions.
+
+The existing wing-frame animation is retained. The upward pose lasts about 0.4 seconds, then eases into the existing downward tilt. Impact adds a roughly half-second white flash and gradual downward rotation, measured from the user's supplied gameplay clip. Movement physics remain fixed. Reduced-motion preferences skip screen tweens and the impact flash.
+
 The original 288 × 512 logical viewport defines a single uniform scale: bird 34 × 24, pipes 52 wide, ground 112 high. Wide screens extend the repeating scenery horizontally; tall screens add sky. Sprites retain their proportions. The canvas fills the viewport without scrolling and uses nearest-neighbor image rendering.
 
 ## Source and verification
@@ -31,6 +35,8 @@ The original 288 × 512 logical viewport defines a single uniform scale: bird 34
 - `public/engine.mjs`: movement, fixed pipe spacing and speed, collision, score, and resizing.
 - `public/assets.mjs`: crops and renders the unchanged official atlas.
 - `public/game.js`: title, Get Ready, gameplay, death fall, scorecard, and Menu-to-title behavior.
+- `public/transitions.mjs`: screen-animation timing and easing only.
+- `public/bird-presentation.mjs`: the reference clip's upward-pose and impact visuals, separate from physics.
 - `server.mjs`: serves static game files only. The previous account APIs are removed; any existing ignored database files remain untouched.
 
 ```sh

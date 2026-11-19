@@ -39,6 +39,7 @@ export class Game {
   hit() {
     if (this.state !== 'playing') return;
     this.state = 'falling'; this.bird.vy = Math.max(0, this.bird.vy);
+    this.onEvent('hit');
   }
   update(dt) {
     if (!['playing', 'falling'].includes(this.state)) return;
@@ -68,6 +69,7 @@ export class Game {
       if (this.bird.y < this.bird.radius) { this.bird.y = this.bird.radius; this.bird.vy = Math.max(0, this.bird.vy); }
     }
     if (this.bird.y + this.bird.radius >= this.ground) {
+      if (this.state === 'playing') this.hit();
       this.bird.y = this.ground - this.bird.radius; this.bird.vy = 0; this.end();
     }
   }
