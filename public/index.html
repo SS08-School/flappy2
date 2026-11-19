@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#143f35">
+  <meta name="description" content="Meet Flabby. A little bird with a little extra heart. Fly, find powerups, and chase your next high score.">
+  <title>Flabby Bird — A little extra heart.</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23143f35'/%3E%3Cpath d='M6 12h4V8h12v4h4v12H10v-4H6z' fill='%23ffd460'/%3E%3Cpath d='M19 11h6v8h-6z' fill='white'/%3E%3Cpath d='M22 13h3v4h-3z' fill='%23143f35'/%3E%3Cpath d='M22 20h8v4h-8z' fill='%23f28446'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/game.js"></script>
+</head>
+<body>
+  <svg class="svg-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 21 3 12V5h7l2 3 2-3h7v7z"/></symbol>
+    <symbol id="i-cup" viewBox="0 0 24 24"><path d="M7 3h10v9l-3 4h-4l-3-4zM7 5H3v5l4 2m10-7h4v5l-4 2M12 16v5m-5 0h10"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9h4l5-5v16l-5-5H4zM17 8q5 4 0 8m3-12q8 8 0 16"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-shirt" viewBox="0 0 24 24"><path d="m8 3-6 4 3 5 3-2v11h8V10l3 2 3-5-6-4q-4 5-8 0Z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 1 1 4 3l-1 1v2m0 2v1"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+  </defs></svg>
+  <div class="site-shell">
+    <header class="header">
+      <a href="/" class="brand" aria-label="Flabby Bird home"><span class="brand-bird" aria-hidden="true">▟</span>flabby<span>bird</span><span class="edition">THE FANGAME</span></a>
+      <nav aria-label="Main navigation">
+        <button class="nav-btn" data-dialog="help"><svg><use href="#i-help"/></svg><span>How to play</span></button>
+        <button class="nav-btn" data-dialog="leaderboard"><svg><use href="#i-cup"/></svg><span>Leaderboard</span></button>
+        <button class="nav-btn" data-dialog="wardrobe"><svg><use href="#i-shirt"/></svg><span>Wardrobe</span></button>
+      </nav>
+      <button class="account-btn" id="account-button"><svg><use href="#i-user"/></svg><span id="account-label">Sign in</span></button>
+    </header>
+
+    <main>
+      <div class="scene-heading"><p><span class="live-dot"></span> SMALL WINGS. BIG POSSIBILITIES.</p><span class="version-label">A fresh take on a familiar flight</span></div>
+      <section class="game-frame" id="game-frame" aria-label="Flabby Bird game">
+        <canvas id="game" width="1100" height="620" tabindex="0" aria-label="Game area. Press Space, Arrow Up, or tap to flap. P pauses."></canvas>
+        <div class="hud">
+          <div class="health-block"><span class="hud-label">A LITTLE EXTRA HEART</span><span class="heart" id="heart" aria-label="2 health remaining"><svg viewBox="0 0 40 36"><path class="heart-empty" d="M20 34 2 16V4h12l6 6 6-6h12v12Z"/><path class="heart-left" d="M20 34 2 16V4h12l6 6Z"/><path class="heart-right" d="M20 34V10l6-6h12v12Z"/><path class="heart-crack" d="m21 7-5 9 8 4-5 11"/></svg><span id="health-text">2 / 2</span></span></div>
+          <div class="score-block"><span class="hud-label">SCORE</span><span id="score">0</span></div>
+          <div class="hud-right"><span class="level-chip" id="level-chip">LEVEL 01</span><button class="icon-btn" id="sound-button" aria-label="Turn sound off" title="Toggle sound"><svg><use href="#i-sound"/></svg></button><button class="icon-btn" id="pause-button" aria-label="Pause game" title="Pause (P)"><svg><use href="#i-pause"/></svg></button></div>
+        </div>
+        <div class="intro screen" id="intro">
+          <span class="intro-eyebrow">MEET YOUR NEW FLIGHT RISK</span>
+          <h1>FLABBY<span>BIRD<span class="title-spark">✦</span></span></h1>
+          <p>A little bird. A big adventure.<br>And a little extra heart.</p>
+          <button class="play-btn" id="play-button"><span class="play-triangle"></span>LET’S FLY<span class="keycap">↵</span></button>
+          <span class="start-hint">or press <kbd>SPACE</kbd> to take off</span>
+          <div class="personal-best"><svg><use href="#i-cup"/></svg> YOUR BEST <strong id="best-score">0</strong></div>
+        </div>
+        <div class="screen state-screen" id="pause-screen" hidden><span class="intro-eyebrow">TAKE A BREATHER</span><h2>Just winging it.</h2><p>Your flight is right where you left it.</p><button class="play-btn" id="resume-button">KEEP FLYING</button><button class="text-button" id="quit-button">End this flight</button></div>
+        <div class="screen state-screen" id="gameover" hidden><span class="intro-eyebrow" id="result-eyebrow">EVERY FLIGHT IS A FRESH START</span><h2>One more flight?</h2><div class="result-stats"><div><span>SCORE</span><strong id="final-score">0</strong></div><div><span>PERSONAL BEST</span><strong id="final-best">0</strong></div></div><p id="save-status">Your progress is saved on this device.</p><button class="play-btn" id="retry-button"><span class="play-triangle"></span>FLY AGAIN</button><button class="text-button" data-dialog="leaderboard">View the leaderboard</button></div>
+        <div class="power-indicator" id="power-indicator" hidden><span id="power-name"></span><div><span id="power-bar"></span></div></div>
+        <div class="flight-note" id="flight-note" role="status"></div>
+        <div class="world-caption"><span>THE MEADOWS</span><span>01 — A GOOD DAY TO FLY</span></div>
+      </section>
+      <div class="under-game"><div class="controls-legend"><span><kbd>SPACE</kbd><span>or</span><kbd>↑</kbd> flap</span><span><kbd>P</kbd> pause</span><span class="touch-hint">Tap anywhere to flap</span></div><span class="encouragement">Two chances. Endless possibilities.<svg><use href="#i-heart"/></svg></span></div>
+      <section class="flight-guide" aria-label="Game features">
+        <button class="feature" data-dialog="help"><span class="feature-art heart-art">♥</span><span><strong>A little more forgiving.</strong><small>Two hits. One brave little bird.</small></span><span class="feature-plus">+</span></button>
+        <button class="feature" data-dialog="help"><span class="feature-art snail-art">◉<span>╲╱</span></span><span><strong>A boost when you need it.</strong><small>Snail slows. Cloak lets you through.</small></span><span class="feature-plus">+</span></button>
+        <button class="feature" data-dialog="leaderboard"><span class="feature-art trophy-art"><svg><use href="#i-cup"/></svg></span><span><strong>Your next personal best awaits.</strong><small>A fresh leaderboard every Monday.</small></span><span class="feature-plus">+</span></button>
+      </section>
+    </main>
+    <footer><span>MADE FOR THE <svg><use href="#i-heart"/></svg> OF THE GAME</span><span>A fangame by Sebastian Szeliga & Joel Ramirez</span><button data-dialog="help">Flight manual</button></footer>
+  </div>
+  <dialog id="modal"><div class="modal-top"><span class="modal-kicker" id="modal-kicker">FLABBY BIRD</span><button id="close-modal" class="icon-btn" aria-label="Close dialog"><svg><use href="#i-close"/></svg></button></div><div id="modal-content"></div></dialog>
+  <div class="toast" id="toast" role="status"></div>
+</body>
+</html>
