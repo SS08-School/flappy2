@@ -1,6 +1,6 @@
 import test from 'node:test';
 import { checkEngine, checkServer, checkAssets } from './checks.mjs';
-import { checkClient, checkGroundLoop } from './client-checks.mjs';
+import { checkClient, checkGroundLoop, checkRefreshRates } from './client-checks.mjs';
 import { checkPresentation } from './presentation-checks.mjs';
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 test('original game rules and widescreen geometry', checkEngine);
@@ -12,3 +12,4 @@ test('screen transitions and reference-video bird presentation', checkPresentati
 test('supplied sound effects and gameplay timing', checkAudio);
 test('reference medal glimmer', checkGlimmer);
 test('seamless ground scrolling', checkGroundLoop);
+test('240 FPS cap and refresh-independent motion', checkRefreshRates);

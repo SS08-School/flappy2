@@ -9,7 +9,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
   function makeContext() {
     let matrix = [1,0,0,1,0,0]; const stack = [], commands = [];
     return {
-      globalAlpha: 1, fillStyle: '#000', commands,
+      globalAlpha: 1, fillStyle: '#000', commands, renderCount: 0,
       clearRect() { commands.length = 0; },
       drawImage(image, ...args) { commands.push({ kind:'image', args, matrix:[...matrix], alpha:this.globalAlpha }); },
       fillRect(...args) { commands.push({ kind:'fill', args, color:this.fillStyle, matrix:[...matrix], alpha:this.globalAlpha }); },
@@ -17,7 +17,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
       restore() { const state = stack.pop(); matrix = state.matrix; this.globalAlpha = state.alpha; this.fillStyle = state.fill; },
       translate(x,y) { matrix[4] += matrix[0]*x + matrix[2]*y; matrix[5] += matrix[1]*x + matrix[3]*y; },
       rotate(angle) { const [a,b,c,d,e,f]=matrix, co=Math.cos(angle),si=Math.sin(angle); matrix=[a*co+c*si,b*co+d*si,c*co-a*si,d*co-b*si,e,f]; },
-      setTransform(...value) { matrix=value; commands.length=0; },
+      setTransform(...value) { matrix=value; commands.length=0; this.renderCount++; },
       fillText() { throw new Error('Only official sprite text is allowed'); },
     };
   }
@@ -101,7 +101,8 @@ export async function checkGroundLoop() {
       assert.equal(tiles.length, 1, 'one continuous ground draw across portrait viewport, including wraps');
       const [,,,,left,,tileWidth] = tiles[0].args;
       assert.ok(left <= 0 && left + tileWidth >= c.controller.game.width, 'ground covers both viewport edges');
-      assert.ok(Math.abs((left + frame * 2) % 24) < 1e-7, 'stripe phase stays continuous through every wrap');
+      const phase = (left + frame * 2) / 24;
+      assert.ok(Math.abs(phase - Math.round(phase)) < 1e-7, 'stripe phase stays continuous through every wrap');
     }
   }
   const wide = await createClient({ width:1920, height:1080 }); wide.tick(.1);
@@ -111,4 +112,36 @@ export async function checkGroundLoop() {
     assert.equal((tiles[i].args[4] - tiles[i-1].args[4]) % 24, 0);
   }
   return 'Ground: repeated wraps at fractional portrait scales and matching overlapped widescreen tiles passed.';
+}
+
+export async function checkRefreshRates() {
+  const baseline = new Game(); baseline.start(); baseline.update(.1); baseline.update(.1);
+  for (const hz of [30,60,120,144,165,240,360,480,1000]) {
+    const c = await createClient();
+    for (let i=0;i<hz;i++) c.tick(1/hz);
+    const context = c.elements.get('game').context;
+    assert.equal(context.renderCount, Math.min(hz,240), `${hz} Hz obeys the 240 FPS render cap without throttling lower refresh rates`);
+    c.controller.prepareRun(); c.controller.flap();
+    let remaining = .2;
+    while (remaining > 1e-10) { const dt=Math.min(remaining,1/hz); c.tick(dt); remaining-=dt; }
+    assert.ok(Math.abs(c.controller.game.bird.y-baseline.bird.y)<1e-8, `${hz} Hz has the same flap trajectory`);
+    assert.equal(c.controller.game.distance, baseline.distance, `${hz} Hz has the same pipe speed`);
+    assert.equal(c.controller.game.score, 0);
+  }
+  const smooth = await createClient(); smooth.controller.prepareRun(); smooth.controller.flap();
+  smooth.controller.game.pipes = [{ x:220, center:188, gap:200, width:52, scored:false }];
+  const ys=[], xs=[];
+  for (let i=0;i<16;i++) {
+    smooth.tick(1/240);
+    const commands=smooth.elements.get('game').context.commands;
+    const bird=commands.find(command=>command.kind==='image' && command.args[1]===982 && command.args[2]===34);
+    const pipe=commands.find(command=>command.kind==='image' && command.args[0]===112);
+    ys.push(bird.matrix[5]); xs.push(pipe.args[4]);
+  }
+  assert.ok(new Set(ys.map(y=>y.toFixed(5))).size>=12, 'bird moves between 60 Hz physics steps');
+  assert.ok(new Set(xs.map(x=>x.toFixed(5))).size>=12, 'pipes move between 60 Hz physics steps');
+  const game=smooth.controller.game, before={ y:game.bird.y, distance:game.distance, score:game.score };
+  for(let i=0;i<10;i++)game.presentation();
+  assert.deepEqual({ y:game.bird.y, distance:game.distance, score:game.score },before,'interpolation never changes gameplay state');
+  return 'Refresh rates: 30–1000 Hz callbacks cap at 240 FPS, preserve speed/trajectory, and interpolate bird/pipes between physics steps.';
 }

@@ -10,6 +10,8 @@ const canvas = $('game'), ctx = canvas.getContext('2d'), ui = $('game-ui');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let screen = 'home', loaded = false, view, night = false, rounds = 0;
 let clock = 0, previous = performance.now(), landDistance = 0;
+const RENDER_INTERVAL = 1000 / 240;
+let nextFrameAt = previous + RENDER_INTERVAL;
 let best = 0, previousBest = 0, finalScore = 0, newBest = false;
 let scene = { phase: reducedMotion ? 'idle' : 'in', elapsed: 0 }, sceneBlack = reducedMotion ? 0 : 1;
 let readyAge = 0, readyExitAge = null, flapElapsed = Infinity;
@@ -101,7 +103,8 @@ function flap() {
   if (scene.phase !== 'idle') return;
   if (screen === 'ready') {
     const bob = reducedMotion ? 0 : idleBob(clock);
-    game.start(); game.bird.y += bob; screen = 'playing'; flapElapsed = 0; readyExitAge = 0; updateControls();
+    game.start(); game.bird.y += bob; game.previousBirdY += bob;
+    screen = 'playing'; flapElapsed = 0; readyExitAge = 0; updateControls();
   } else if (game.state === 'playing') { game.flap(); flapElapsed = 0; }
 }
 $('play-button').addEventListener('click', prepareRun);
@@ -152,13 +155,17 @@ function renderResults(xOffset, yOffset) {
   ctx.restore();
 }
 function frame(time) {
+  requestAnimationFrame(frame);
+  if (time + 1e-7 < nextFrameAt) return;
+  // Advance the deadline by whole slots to keep 144/165/360 Hz displays from
+  // drifting or dropping to a divisor of their refresh rate. Never catch up by drawing twice.
+  nextFrameAt += (Math.floor((time - nextFrameAt + 1e-7) / RENDER_INTERVAL) + 1) * RENDER_INTERVAL;
   const elapsed = Math.max(0, (time - previous) / 1000 || .016), dt = Math.min(elapsed, .1); previous = time;
   advanceScene(elapsed);
   if (scene.phase !== 'hold') readyAge += elapsed;
   if (readyExitAge !== null) readyExitAge += elapsed;
   flapElapsed += dt; clock += dt;
   if (impact) impact.elapsed += elapsed;
-  const oldDistance = game.distance;
   game.update(dt);
   if (impact) {
     for (const [flag, delay] of [['headerSound', TIMING.headerDelay], ['panelSound', TIMING.panelDelay]]) {
@@ -169,15 +176,16 @@ function frame(time) {
       }
     }
   }
-  if (!impact) landDistance += game.state === 'playing' ? game.distance - oldDistance : PHYSICS.speed * dt;
+  if (!impact) landDistance += PHYSICS.speed * dt;
   updateControls();
   const factor = view.scale * view.dpr;
   ctx.setTransform(factor, 0, 0, factor, 0, 0); ctx.imageSmoothingEnabled = false;
   const width = game.width, ground = game.ground, ox = (width - METRICS.width) / 2, oy = (game.height - METRICS.height) / 2;
   drawBackground(ctx, width, game.height, ground, night);
+  const pose = game.presentation();
   for (const pipe of game.pipes) {
-    drawPipe(ctx, pipe.x, 0, pipe.width, pipe.center - pipe.gap / 2, true);
-    drawPipe(ctx, pipe.x, pipe.center + pipe.gap / 2, pipe.width, ground - pipe.center - pipe.gap / 2);
+    drawPipe(ctx, pipe.x + pose.pipeOffset, 0, pipe.width, pipe.center - pipe.gap / 2, true);
+    drawPipe(ctx, pipe.x + pose.pipeOffset, pipe.center + pipe.gap / 2, pipe.width, ground - pipe.center - pipe.gap / 2);
   }
   if (loaded) {
     const wing = impact ? impact.wing : wingPose(clock);
@@ -192,7 +200,7 @@ function frame(time) {
         drawSprite(ctx, 'ready', ox + 46, oy + 84); drawSprite(ctx, 'tutorial', ox + 87, oy + 156); ctx.restore();
       }
       birdTilt = impact ? impactPresentation(impact.elapsed, impact.startingAngle, reducedMotion).angle : game.state === 'ready' ? 0 : flapAngle(flapElapsed, game.bird.vy);
-      drawBird(ctx, game.bird.x, game.bird.y + (screen === 'ready' && !reducedMotion ? idleBob(clock) : 0), wing, birdTilt);
+      drawBird(ctx, game.bird.x, pose.birdY + (screen === 'ready' && !reducedMotion ? idleBob(clock) : 0), wing, birdTilt);
       if (impact) renderResults(ox, oy);
     }
     lastWing = wing;
@@ -207,7 +215,6 @@ function frame(time) {
     ctx.save(); ctx.fillStyle = '#000'; ctx.globalAlpha = sceneBlack;
     ctx.fillRect(0, 0, width, game.height); ctx.restore();
   }
-  requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 function initializeAssets() {

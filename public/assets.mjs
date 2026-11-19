@@ -41,17 +41,17 @@ export function loadAssets() {
   });
   return loading;
 }
-export function drawSprite(ctx, name, x, y, scale = 1) {
+export function drawSprite(ctx, name, x, y, scale = 1, snap = true) {
   if (!atlas) return;
   const s = SPRITES[name];
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(atlas, s.x, s.y, s.width, s.height, Math.round(x), Math.round(y), s.width * scale, s.height * scale);
+  ctx.drawImage(atlas, s.x, s.y, s.width, s.height, snap ? Math.round(x) : x, snap ? Math.round(y) : y, s.width * scale, s.height * scale);
 }
 export function drawBird(ctx, x, y, wing = 0, angle = 0) {
   if (!atlas) return;
   const s = SPRITES.yellow;
   const [sx, sy] = s.frames[wing > .3 ? 0 : wing < -.3 ? 2 : 1];
-  ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(angle);
+  ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(atlas, sx, sy, s.width, s.height, -17, -12, 34, 24); ctx.restore();
 }
@@ -71,8 +71,11 @@ export function drawGround(ctx, width, ground, distance) {
   // one sprite covers the locked viewport throughout the loop. Wider views
   // overlap one full repeat, preventing fractional-scale tile-edge seams.
   const period = 24, stride = SPRITES.ground.width - period;
-  const offset = Math.round(distance) % period;
-  for (let x = -offset; x < width; x += stride) drawSprite(ctx, 'ground', x, ground);
+  const offset = distance % period;
+  for (let x = -offset; x < width; x += stride) {
+    drawSprite(ctx, 'ground', x, ground, 1, false);
+    if (x + SPRITES.ground.width >= width) break;
+  }
 }
 export function drawPipe(ctx, x, y, width, height, up = false, alpha = 1) {
   if (!atlas || height <= 0) return;
@@ -82,14 +85,14 @@ export function drawPipe(ctx, x, y, width, height, up = false, alpha = 1) {
   if (height <= naturalHeight) {
     const sourceHeight = height / scale;
     ctx.drawImage(atlas, s.x, up ? s.y + s.height - sourceHeight : s.y, s.width, sourceHeight,
-      Math.round(x), Math.round(y), width, height);
+      x, Math.round(y), width, height);
   } else {
     // Extend only the uniform shaft, preserving the native cap and pipe width.
     const extension = height - naturalHeight;
     ctx.drawImage(atlas, s.x, up ? s.y : s.y + 30, s.width, 1,
-      Math.round(x), Math.round(up ? y : y + naturalHeight), width, extension);
+      x, Math.round(up ? y : y + naturalHeight), width, extension);
     ctx.drawImage(atlas, s.x, s.y, s.width, s.height,
-      Math.round(x), Math.round(up ? y + extension : y), width, naturalHeight);
+      x, Math.round(up ? y + extension : y), width, naturalHeight);
   }
   ctx.restore();
 }

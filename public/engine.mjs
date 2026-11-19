@@ -18,6 +18,7 @@ export class Game {
     this.bird = { x: 90 + (this.width - METRICS.width) * .3, y: 188 + (this.height - METRICS.height) / 2, vy: 0, radius: 12 };
     this.pipes = [];
     this.nextPipeAt = PHYSICS.firstPipeDelay;
+    this.previousBirdY = this.bird.y; this.previousDistance = this.distance;
   }
   resize(width, height) {
     const oldGround = this.ground, oldX = this.bird.x;
@@ -29,6 +30,15 @@ export class Game {
       pipe.x += shift;
       pipe.center = Math.max(pipe.gap / 2 + 30, Math.min(this.ground - pipe.gap / 2 - 30, pipe.center / oldGround * this.ground));
     }
+    this.previousBirdY = this.bird.y; this.previousDistance = this.distance;
+  }
+  presentation() {
+    if (!['playing', 'falling'].includes(this.state)) return { birdY: this.bird.y, pipeOffset: 0 };
+    const alpha = Math.max(0, Math.min(1, this.accumulator / PHYSICS.step));
+    return {
+      birdY: this.previousBirdY + (this.bird.y - this.previousBirdY) * alpha,
+      pipeOffset: this.state === 'playing' ? (this.distance - this.previousDistance) * (1 - alpha) : 0,
+    };
   }
   start() { this.reset(); this.state = 'playing'; this.flap(); }
   flap() {
@@ -54,6 +64,7 @@ export class Game {
     }
   }
   step(dt) {
+    this.previousBirdY = this.bird.y; this.previousDistance = this.distance;
     this.bird.vy += PHYSICS.gravity * dt;
     this.bird.y += this.bird.vy * dt;
     if (this.state === 'playing' && this.bird.y - this.bird.radius <= 0) {
