@@ -145,3 +145,33 @@ export async function checkRefreshRates() {
   assert.deepEqual({ y:game.bird.y, distance:game.distance, score:game.score },before,'interpolation never changes gameplay state');
   return 'Refresh rates: 30–1000 Hz callbacks cap at 240 FPS, preserve speed/trajectory, and interpolate bird/pipes between physics steps.';
 }
+
+export async function checkInputLatency() {
+  for (const hz of [60,120,144,165,240]) {
+    for (const input of ['keyboard','pointer']) {
+      const c=await createClient(); c.controller.prepareRun();
+      const target={closest:()=>null}, event={target,preventDefault(){}};
+      const press=()=> input==='keyboard'
+        ? c.events.get('keydown')({...event,code:'Space',repeat:false})
+        : c.events.get('pointerdown')({...event,button:0,isPrimary:true});
+      press();
+      const game=c.controller.game, startY=game.bird.y;
+      assert.equal(game.bird.vy,PHYSICS.flap,'input sets the flap impulse synchronously');
+      c.tick(1/hz);
+      const bird=c.elements.get('game').context.commands.find(command=>command.kind==='image'&&command.args[1]===982&&command.args[2]===34);
+      const birdY=bird.matrix[5]/Math.hypot(bird.matrix[0],bird.matrix[1]);
+      assert.ok(birdY<startY,`${hz} Hz ${input}: bird rises on the very next displayed frame`);
+      if(hz>60) assert.equal(game.bird.y,startY,'substep drawing does not advance physics early');
+      // A second flap while descending must also be visible before another physics tick.
+      game.bird.y=200; game.bird.vy=200; game.accumulator=0;
+      press(); c.tick(1/hz);
+      const next=c.elements.get('game').context.commands.find(command=>command.kind==='image'&&command.args[1]===982&&command.args[2]===34);
+      const nextY=next.matrix[5]/Math.hypot(next.matrix[0],next.matrix[1]);
+      assert.ok(nextY<200,`${hz} Hz ${input}: repeated flap has no historical downward frame`);
+      const state={y:game.bird.y,vy:game.bird.vy,score:game.score,distance:game.distance};
+      for(let i=0;i<10;i++)game.presentation();
+      assert.deepEqual({y:game.bird.y,vy:game.bird.vy,score:game.score,distance:game.distance},state);
+    }
+  }
+  return 'Input latency: keyboard and pointer flaps rise on the next frame at 60–240 Hz, without advancing physics or replaying old motion.';
+}

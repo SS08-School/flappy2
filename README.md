@@ -27,7 +27,7 @@ The viewport is locked to the video's **3:4** shape, at a native **288 × 384** 
 | Pipe speed / spacing / gap | 120 px/s / 156 px / 100 px |
 | First pipe delay | Approximately 2.2 s from the first flap |
 | Simulation | Fixed 60 Hz |
-| Rendering | Display refresh rate, capped at 240 FPS; interpolated bird/pipes and continuous ground scrolling |
+| Rendering | Display refresh rate, capped at 240 FPS; fractional-step bird/pipe previews and continuous ground scrolling |
 | Flap impulse / gravity | −330 px/s / 1100 px/s², fitted from the recorded flight arc |
 | Large score | Centered at y=18, official 24 × 36 glyphs |
 | Result score | Separate official 14 × 20 glyphs (10 px wide for 1) |
@@ -39,7 +39,7 @@ The skyline is stationary; ground and pipes move at the same speed. Day and nigh
 
 The ground scroll wraps at the atlas's 24-pixel pattern repeat, keeping a single draw across the locked viewport and overlapping matching repeats in wider views to prevent seams. Touching the top edge ends control and triggers the hit/death fall, just like a pipe collision.
 
-Rendering uses `requestAnimationFrame` with a 240 FPS ceiling. Lower-refresh displays run at their available rate. Drawing interpolates between fixed physics steps, with fractional positions for moving sprites; physics, collision tests, scoring and difficulty remain independent of rendering frequency. The browser and monitor determine the actual achievable frame rate.
+Rendering uses `requestAnimationFrame` with a 240 FPS ceiling. Lower-refresh displays run at their available rate. Drawing previews the unsimulated fraction of the next fixed step using the current flap velocity, instead of blending past positions a full step behind. The preview stays within the screen and never changes physics, collision tests, scoring or difficulty. Keyboard and pointer inputs apply immediately and appear on the next displayed frame. The browser and monitor determine the actual achievable frame rate.
 
 Screen changes fade through black. The Game Over heading, slide-up card, score count-up, medal and buttons appear in the reference order. Numeric timings are measured from a compressed 30 fps recording, so they are approximations rather than recovered original source constants.
 

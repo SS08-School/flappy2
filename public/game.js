@@ -103,7 +103,7 @@ function flap() {
   if (scene.phase !== 'idle') return;
   if (screen === 'ready') {
     const bob = reducedMotion ? 0 : idleBob(clock);
-    game.start(); game.bird.y += bob; game.previousBirdY += bob;
+    game.start(); game.bird.y += bob;
     screen = 'playing'; flapElapsed = 0; readyExitAge = 0; updateControls();
   } else if (game.state === 'playing') { game.flap(); flapElapsed = 0; }
 }
