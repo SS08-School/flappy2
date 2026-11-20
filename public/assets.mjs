@@ -30,7 +30,7 @@ export const SPRITES = {
 };
 // Every score glyph is cropped from the uploaded atlas; no font-rendered digits.
 const DIGITS = [[992,120,24],[272,910,16],[584,320,24],[612,320,24],[640,320,24],[668,320,24],[584,368,24],[612,368,24],[640,368,24],[668,368,24]];
-const RESULT_DIGITS = [[274,612,14],[278,954,10],[262,1002,14],[622,412,14],[1004,0,14],[1004,24,14],[1010,52,14],[1010,84,14],[586,484,14],[274,978,14]];
+const RESULT_DIGITS = [[274,612,14],[278,954,10],[274,978,14],[262,1002,14],[1004,0,14],[1004,24,14],[1010,52,14],[1010,84,14],[586,484,14],[622,412,14]];
 let atlas, loading;
 export function loadAssets() {
   loading ||= new Promise((resolve, reject) => {

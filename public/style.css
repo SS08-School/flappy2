@@ -6,9 +6,8 @@ body{touch-action:none}
 #game{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none}
 canvas{image-rendering:pixelated}
 #game-ui{position:absolute;top:0;left:0;transform-origin:0 0;pointer-events:none}
-.sprite-button{display:block;pointer-events:auto;border:0;background:none;padding:0;width:max-content;line-height:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sprite-button{display:block;pointer-events:auto;border:0;background:none;padding:0;width:max-content;line-height:0;cursor:default;-webkit-tap-highlight-color:transparent}
 .sprite-button canvas{display:block;pointer-events:none}
-.sprite-button:disabled{cursor:default}
 .sprite-button:active:not(:disabled){transform:translateY(2px)}
 .sprite-button:focus-visible{outline:2px solid #fff;outline-offset:3px}
 #play-controls{position:absolute;left:50%;top:var(--buttons-y);transform:translateX(-50%);display:flex;gap:16px}
