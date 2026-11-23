@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { checkEngine, checkServer, checkAssets } from './checks.mjs';
+import { checkEngine, checkServer, checkAssets, checkPipeTiming } from './checks.mjs';
 import { checkClient, checkGroundLoop, checkRefreshRates, checkInputLatency, checkResponsiveClient } from './client-checks.mjs';
 import { checkPresentation } from './presentation-checks.mjs';
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
@@ -17,3 +17,4 @@ test('240 FPS cap and refresh-independent motion', checkRefreshRates);
 test('scorecard digit identity from actual sprite pixels', checkScoreDigits);
 test('next-frame keyboard and pointer response', checkInputLatency);
 test('responsive game screens and live resizing', checkResponsiveClient);
+test('aspect-independent offscreen pipe timing', checkPipeTiming);

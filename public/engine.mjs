@@ -1,6 +1,8 @@
 // Native-pixel measurements from the supplied v1.3 gameplay reference.
-export const METRICS = { width: 288, height: 384, groundHeight: 48, birdWidth: 34, birdHeight: 24, pipeWidth: 52 };
-export const PHYSICS = { speed: 120, spacing: 156, gap: 100, gravity: 1100, flap: -330, firstPipeDelay: 2.2, step: 1 / 60 };
+export const METRICS = { width: 288, height: 384, maxAspectRatio: 16 / 10, groundHeight: 48, birdWidth: 34, birdHeight: 24, pipeWidth: 52 };
+const birdX = width => 90 + (width - METRICS.width) * .3;
+const maxWorldWidth = METRICS.height * METRICS.maxAspectRatio;
+export const PHYSICS = { speed: 120, spacing: 156, gap: 100, gravity: 1100, flap: -330, firstPipeDistance: maxWorldWidth - birdX(maxWorldWidth), step: 1 / 60 };
 
 export function viewportLayout(width, height) {
   const scale = Math.min(Math.max(1, width) / METRICS.width, Math.max(1, height) / METRICS.height);
@@ -13,16 +15,17 @@ export class Game {
     this.reset();
   }
   get ground() { return this.height - METRICS.groundHeight; }
+  get pipeStartX() { return this.bird.x + PHYSICS.firstPipeDistance; }
   reset() {
     this.state = 'ready'; this.score = 0; this.distance = 0; this.elapsed = 0; this.accumulator = 0;
-    this.bird = { x: 90 + (this.width - METRICS.width) * .3, y: 188 + (this.height - METRICS.height) / 2, vy: 0, radius: 12 };
+    this.bird = { x: birdX(this.width), y: 188 + (this.height - METRICS.height) / 2, vy: 0, radius: 12 };
     this.pipes = [];
-    this.nextPipeAt = PHYSICS.firstPipeDelay;
+    this.nextPipeAt = 0;
   }
   resize(width, height) {
     const oldGround = this.ground, oldX = this.bird.x;
     this.width = width; this.height = height;
-    this.bird.x = 90 + (width - METRICS.width) * .3;
+    this.bird.x = birdX(width);
     this.bird.y = Math.max(12, Math.min(this.ground - 12, this.bird.y / oldGround * this.ground));
     const shift = this.bird.x - oldX;
     for (const pipe of this.pipes) {
@@ -41,7 +44,12 @@ export class Game {
       pipeOffset: this.state === 'playing' ? -PHYSICS.speed * remainder : 0,
     };
   }
-  start() { this.reset(); this.state = 'playing'; this.flap(); }
+  spawnPipe(x) {
+    const margin = 50;
+    const center = margin + PHYSICS.gap / 2 + this.random() * (this.ground - margin * 2 - PHYSICS.gap);
+    this.pipes.push({ x, center, gap: PHYSICS.gap, width: METRICS.pipeWidth, scored: false });
+  }
+  start() { this.reset(); this.state = 'playing'; this.spawnPipe(this.pipeStartX); this.flap(); }
   flap() {
     if (this.state !== 'playing') return;
     this.bird.vy = PHYSICS.flap; this.onEvent('flap');
@@ -75,9 +83,9 @@ export class Game {
       this.distance += delta; this.elapsed += dt;
       for (const pipe of this.pipes) pipe.x -= delta;
       while (this.elapsed + 1e-10 >= this.nextPipeAt) {
-        const margin = 50;
-        const center = margin + PHYSICS.gap / 2 + this.random() * (this.ground - margin * 2 - PHYSICS.gap);
-        this.pipes.push({ x: this.width - (this.elapsed - this.nextPipeAt) * PHYSICS.speed, center, gap: PHYSICS.gap, width: METRICS.pipeWidth, scored: false });
+        // Queue the following pipe a full spacing beyond the shared start
+        // edge, before it can enter even the widest supported viewport.
+        this.spawnPipe(this.pipeStartX + PHYSICS.spacing - (this.elapsed - this.nextPipeAt) * PHYSICS.speed);
         this.nextPipeAt += PHYSICS.spacing / PHYSICS.speed;
       }
       for (const pipe of this.pipes) {

@@ -27,7 +27,7 @@ Continue development on `main`. The `Flappy-Bird-Original-Mobile-Version-11-23-2
 | Bird / pipe width | 34 × 24 / 52 px |
 | Foreground ground strip | 48 px; ground at y=336 |
 | Pipe speed / spacing / gap | 120 px/s / 156 px / 100 px |
-| First pipe delay | Approximately 2.2 s from the first flap |
+| First pipe | Starts offscreen on the first flap, 426.48 native px ahead of the bird, based on the maximum 16:10 world |
 | Simulation | Fixed 60 Hz |
 | Rendering | Display refresh rate, capped at 240 FPS; fractional-step bird/pipe previews and continuous ground scrolling |
 | Flap impulse / gravity | −330 px/s / 1100 px/s², fitted from the recorded flight arc |
@@ -40,6 +40,8 @@ Continue development on `main`. The `Flappy-Bird-Original-Mobile-Version-11-23-2
 The skyline is stationary; ground and pipes move at the same speed. Day and night backgrounds use the uploaded atlas, with daytime on the first run and random variants afterward. The title includes the original Rate, Play, leaderboard and copyright graphics. All visible words and digits come from the sheet.
 
 The ground scroll wraps at the atlas's 24-pixel pattern repeat, overlapping matching repeats in wider views to prevent seams. Touching the top edge ends control and triggers the hit/death fall, just like a pipe collision.
+
+The opening pipe has no spawn delay. Its initial distance is fixed using the 16:10 view, placing it exactly outside that view and farther offscreen in narrower windows. The first point arrives about 3.67 seconds into the run at every supported aspect ratio; later pipes follow every 1.3 seconds. Following pipes are queued a full spacing ahead of the shared start edge, so they always exist before entering the visible screen. Resizing preserves each pipe's distance from the bird.
 
 Rendering uses `requestAnimationFrame` with a 240 FPS ceiling. Lower-refresh displays run at their available rate. Drawing previews the unsimulated fraction of the next fixed step using the current flap velocity, instead of blending past positions a full step behind. The preview stays within the screen and never changes physics, collision tests, scoring or difficulty. Keyboard and pointer inputs apply immediately and appear on the next displayed frame. The browser and monitor determine the actual achievable frame rate.
 

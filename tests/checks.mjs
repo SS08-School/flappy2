@@ -49,16 +49,40 @@ export function checkEngine() {
   }
   game.start();
   const pump = () => { game.bird.y = 188; game.bird.vy = 0; game.update(PHYSICS.step); };
-  for (let i = 0; i < 131; i++) pump();
-  assert.equal(game.pipes.length, 0, 'first pipe waits for the measured opening delay');
-  pump(); assert.equal(game.pipes.length, 1); assert.ok(Math.abs(game.pipes[0].x - 288) < .001);
+  assert.equal(game.pipes.length,1,'first pipe exists immediately, offscreen');
+  assert.ok(game.pipes[0].x>=game.width);
+  pump(); assert.equal(game.pipes.length,2,'following pipe is queued ahead of the screen');
   for (let i = 0; i < 78; i++) pump();
-  assert.equal(game.pipes.length, 2); assert.ok(Math.abs(game.pipes[1].x - game.pipes[0].x - 156) < .001, 'reference pipe spacing');
+  assert.equal(game.pipes.length, 3); assert.ok(Math.abs(game.pipes[1].x - game.pipes[0].x - 156) < .001, 'reference pipe spacing');
   const pipe = game.pipes[0], relativeX = pipe.x - game.bird.x;
   game.resize(910,384); assert.ok(Math.abs(pipe.x - game.bird.x - relativeX) < .001);
   assert.equal(game.state, 'playing', 'resize preserves the run without a menu');
   game.reset(); assert.equal(game.state, 'ready'); assert.equal(game.score, 0); assert.equal(game.pipes.length, 0);
   return 'Game rules: pipe/ground/ceiling loss, death fall, fixed speed, scoring, reset, and widescreen geometry passed.';
+}
+
+export function checkPipeTiming() {
+  let baseline;
+  for (const [width,height] of [[614.4,384],[512,384],[384,384],[288,384],[288,623.2615384615]]) {
+    for (const fps of [30,60,144,240]) {
+      const points=[], game=new Game({width,height,random:()=>.5,onEvent(type){if(type==='score')points.push(Number(game.elapsed.toFixed(6)));}});
+      game.start();
+      assert.ok(game.pipes[0].x>=width-1e-8,'first pipe starts fully offscreen');
+      assert.ok(Math.abs(game.pipes[0].x-game.bird.x-426.48)<1e-8,'starting distance uses the maximum 16:10 world');
+      if(width===614.4)assert.ok(Math.abs(game.pipes[0].x-width)<1e-8,'widest view starts as close as possible');
+      const seen=new Set(game.pipes);
+      for(let frame=0;frame<fps*8;frame++) {
+        game.bird.y=game.ground/2;game.bird.vy=0;game.update(1/fps);
+        for(const pipe of game.pipes)if(!seen.has(pipe)){assert.ok(pipe.x>=width-1e-8,'new pipes are queued offscreen without popping in');seen.add(pipe);}
+        for(let i=1;i<game.pipes.length;i++)assert.ok(Math.abs(game.pipes[i].x-game.pipes[i-1].x-156)<1e-8,'pipe spacing stays constant');
+      }
+      assert.equal(game.state,'playing');
+      assert.equal(points[0],3.666667,'opening score arrives without the old 2.2 second delay');
+      baseline ||= points;
+      assert.deepEqual(points,baseline,'all aspect ratios and refresh rates encounter pipes at the same times');
+    }
+  }
+  return 'Pipes: immediate offscreen start, fixed 16:10-based distance, no pop-in, constant spacing and identical encounter times at 30–240 Hz passed.';
 }
 
 export async function checkAssets() {
