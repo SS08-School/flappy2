@@ -1,6 +1,6 @@
 # Asset credits
 
-Flappy Bird was created by **Dong Nguyen / .GEARS**. This browser build follows the supplied v1.3 video reference.
+Flappy Bird was created by **Dong Nguyen / .GEARS**. This browser build follows the supplied v1.3 video reference. The [additional bird-animation clip](https://www.youtube.com/watch?v=1vo4HPystfM) is used only to measure wing cadence and idle bobbing; no artwork or audio from it is shipped.
 
 All runtime graphics use the uploaded **Mobile - Flappy Bird - Miscellaneous - General Sprites (v1.3).png**, copied unchanged to `public/assets/flappy/official-v1.3.png`.
 

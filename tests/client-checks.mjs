@@ -117,6 +117,39 @@ export async function checkGroundLoop() {
   return 'Ground: repeated wraps at fractional portrait scales and matching overlapped widescreen tiles passed.';
 }
 
+export async function checkBirdAnimation() {
+  const c=await createClient({reducedMotion:false});c.tick(.36);
+  c.controller.prepareRun();c.tick(.7);
+  assert.equal(c.controller.screen(),'ready');
+  const game=c.controller.game;
+  const bird=()=>c.elements.get('game').context.commands.find(c=>c.kind==='image'&&c.args[1]===982&&c.args[2]===34);
+  const sample=playing=>{
+    const starts=[],ys=[];let previous;
+    for(let frame=0;frame<180;frame++){
+      // Isolate wing timing from gravity and collision for a long clean sample.
+      if(playing){game.bird.y=188;game.bird.vy=0;}
+      c.tick(1/120);const pose=bird(),sx=pose.args[0];
+      if(sx===6&&previous!==6)starts.push(frame/120);
+      previous=sx;ys.push(pose.matrix[5]/Math.hypot(pose.matrix[0],pose.matrix[1]));
+    }
+    return {starts,ys};
+  };
+  const idle=sample(false);
+  for(let i=1;i<idle.starts.length;i++)assert.ok(Math.abs(idle.starts[i]-idle.starts[i-1]-14/30)<1/120+1e-8,'idle cycles match 14 recorded frames');
+  assert.ok(Math.abs(Math.max(...idle.ys)-Math.min(...idle.ys)-8)<.02,'idle bob travels eight native pixels peak to peak');
+  for(let i=0;i<90;i++)assert.ok(Math.abs(idle.ys[i]-idle.ys[i+90])<1e-8,'bobbing repeats every 0.75 seconds');
+  c.controller.flap();c.tick(1/240);assert.equal(bird().args[0],6,'first flap begins with the official raised wing');
+  const flying=sample(true);
+  assert.ok(flying.starts.length>=7);
+  for(let i=1;i<flying.starts.length;i++)assert.ok(Math.abs(flying.starts[i]-flying.starts[i-1]-.2)<1/120+1e-8,'active cycles match six recorded frames');
+  c.elapse(.071);c.controller.flap();c.tick(1/240);
+  assert.equal(bird().args[0],6,'another tap restarts the raised-wing pose');
+  game.bird.vy=300;game.bird.y=188;c.tick(1/240);
+  assert.equal(bird().args[0],62,'a steep descent settles on the official middle wing');
+  assert.ok(c.images.every(path=>path==='/assets/flappy/official-v1.3.png'));
+  return 'Bird animation: 0.467 s idle / 0.2 s active cycles, flap resets, middle-wing dive pose and 0.75 s eight-pixel bob use only the uploaded atlas.';
+}
+
 export async function checkPipeAnchoring() {
   for(const [width,height] of [[1920,1200],[1280,800],[1024,768],[390,844],[391,845]]){
     const c=await createClient({width,height});c.controller.prepareRun();c.controller.flap();

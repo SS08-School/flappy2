@@ -215,7 +215,9 @@ function frame(time) {
     drawPipe(ctx, pipe.x + pose.pipeOffset, pipe.center + pipe.gap / 2, pipe.width, ground - pipe.center - pipe.gap / 2 + 1);
   }
   if (loaded) {
-    const wing = impact ? impact.wing : wingPose(clock);
+    // Actual flaps reset flapElapsed, restarting the faster official wing cycle.
+    const flying = game.state === 'playing';
+    const wing = impact ? impact.wing : wingPose(flying ? flapElapsed : clock, flying, game.bird.vy);
     if (screen === 'home') {
       drawSprite(ctx, 'title', ox + 55, oy + 86);
       drawBird(ctx, ox + 144, oy + 164 + (reducedMotion ? 0 : idleBob(clock)), wing);

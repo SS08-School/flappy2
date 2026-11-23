@@ -1,12 +1,15 @@
-// Visual timings measured from the user's reference clip, not nebezbird.
+// Visual timings measured from the supplied gameplay recordings, not nebezbird.
 const clamp = value => Math.max(0, Math.min(1, value));
-export const BIRD_TIMING = { upHold: .4, upRelease: .18, hitFlash: .55, hitTurnDelay: .12, hitTurn: .43, wingCycle: 28 / 60, bobCycle: .75 };
+export const BIRD_TIMING = { upHold: .4, upRelease: .18, hitFlash: .55, hitTurnDelay: .12, hitTurn: .43, wingCycle: 28 / 60, flightWingCycle: 12 / 60, wingFallVelocity: 240, bobCycle: .75, bobAmplitude: 4 };
 export const UP_TILT = -25 * Math.PI / 180;
 
-export function wingPose(elapsed) {
-  return [-1, 0, 1, 0][Math.floor(elapsed / (BIRD_TIMING.wingCycle / 4)) % 4];
+export function wingPose(elapsed, playing = false, velocity = 0) {
+  if (playing && velocity >= BIRD_TIMING.wingFallVelocity) return 0;
+  const cycle = playing ? BIRD_TIMING.flightWingCycle : BIRD_TIMING.wingCycle;
+  const frames = playing ? [1, 0, -1, 0] : [-1, 0, 1, 0];
+  return frames[Math.floor((elapsed + 1e-9) / (cycle / 4)) % 4];
 }
-export function idleBob(elapsed) { return 3 * Math.sin(elapsed * Math.PI * 2 / BIRD_TIMING.bobCycle); }
+export function idleBob(elapsed) { return BIRD_TIMING.bobAmplitude * Math.sin(elapsed * Math.PI * 2 / BIRD_TIMING.bobCycle); }
 
 export function flapAngle(elapsedSinceFlap, velocity) {
   const target = Math.max(UP_TILT, Math.min(Math.PI / 2, velocity * .0045));

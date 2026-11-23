@@ -1,6 +1,6 @@
 import test from 'node:test';
 import { checkEngine, checkServer, checkAssets, checkPipeTiming } from './checks.mjs';
-import { checkClient, checkGroundLoop, checkPipeAnchoring, checkRefreshRates, checkInputLatency, checkResponsiveClient, checkPreciseInputTiming } from './client-checks.mjs';
+import { checkClient, checkGroundLoop, checkPipeAnchoring, checkBirdAnimation, checkRefreshRates, checkInputLatency, checkResponsiveClient, checkPreciseInputTiming } from './client-checks.mjs';
 import { checkPresentation } from './presentation-checks.mjs';
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 import { checkScoreDigits } from './score-checks.mjs';
@@ -12,6 +12,8 @@ test('uploaded official sprite sheet only', checkAssets);
 test('original game client flow', () => checkClient());
 test('animated client flow and cancellation', () => checkClient({ reducedMotion: false }));
 test('screen transitions and reference-video bird presentation', checkPresentation);
+
+test('reference idle and active bird animation', checkBirdAnimation);
 test('supplied sound effects and gameplay timing', checkAudio);
 test('reference medal glimmer', checkGlimmer);
 test('seamless ground scrolling', checkGroundLoop);
