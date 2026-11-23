@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
+import { pipePose, pipeShaftLength, pipeBounds } from '../public/difficulty.mjs';
 
 export async function createClient({ reducedMotion = true, width = 480, height = 640, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
   const elements = new Map(), frames = [], stored = new Map(), images = [], events = new Map();
@@ -41,7 +42,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
     querySelectorAll:()=>[...elements.values()].filter(e=>e.dataset.sprite),
   };
   const sandbox = {
-    document, devicePixelRatio:1, Game, METRICS, PHYSICS, viewportLayout, console, performance:{now:()=>now},
+    document, devicePixelRatio:1, Game, METRICS, PHYSICS, viewportLayout, pipePose, pipeShaftLength, pipeBounds, console, performance:{now:()=>now},
     GameAudio: class { constructor() { return audio; } }, DEATH_SOUND_DELAY: .2,
     matchMedia:()=>({matches:reducedMotion}), ResizeObserver:class { observe() {} },
     requestAnimationFrame:callback=>frames.push(callback),
@@ -116,6 +117,28 @@ export async function checkGroundLoop() {
   return 'Ground: repeated wraps at fractional portrait scales and matching overlapped widescreen tiles passed.';
 }
 
+export async function checkPipeAnchoring() {
+  for(const [width,height] of [[1920,1200],[1280,800],[1024,768],[390,844],[391,845]]){
+    const c=await createClient({width,height});c.controller.prepareRun();c.controller.flap();
+    const game=c.controller.game;game.state='ready';
+    for(const offset of [-80.75,-.49,-.25,0,.25,.49,79.51]){
+      const center=game.ground/2+offset,cap=center+50;
+      game.pipes=[{x:100,center,gap:100,width:52,scored:false,level:1}];c.tick(.02);
+      const images=c.elements.get('game').context.commands.filter(c=>c.kind==='image');
+      const lower=images.filter(c=>c.args[0]===168&&c.args[1]>=646&&c.args[1]<966&&c.args[2]===52);
+      const head=lower.find(c=>c.args[1]===646);
+      assert.ok(Math.abs(head.args[5]-cap)<1e-8,'fractional cap position matches the collision opening');
+      const spans=lower.map(c=>[c.args[5],c.args[5]+c.args[7]]).sort((a,b)=>a[0]-b[0]);
+      let end=cap;
+      for(const [start,bottom] of spans){assert.ok(start<=end+1e-8,'pipe shaft has no internal split');end=Math.max(end,bottom);}
+      assert.ok(end>=game.ground+1-1e-8,'pipe base extends beneath the foreground instead of floating');
+      const upper=images.filter(c=>c.args[0]===112&&c.args[1]>=646&&c.args[1]<966&&c.args[2]===52);
+      assert.ok(Math.abs(Math.max(...upper.map(c=>c.args[5]+c.args[7]))-(center-50))<1e-8,'upper cap stays on its exact opening boundary');
+    }
+  }
+  return 'Pipe bases: fractional cap heights stay aligned, shafts remain continuous, and bases overlap the ground at phone/tablet/desktop scales.';
+}
+
 export async function checkRefreshRates() {
   const baseline = new Game(); baseline.start(); baseline.update(.1); baseline.update(.1);
   for (const hz of [30,60,120,144,165,240,360,480,1000]) {
@@ -150,11 +173,11 @@ export async function checkRefreshRates() {
 
 export async function checkInputLatency() {
   for (const hz of [60,120,144,165,240]) {
-    for (const input of ['keyboard','pointer']) {
+    for (const input of ['keyboard','pointer','w']) {
       const c=await createClient(); c.controller.prepareRun();
       const target={closest:()=>null}, event={target,preventDefault(){}};
-      const press=()=> input==='keyboard'
-        ? c.events.get('keydown')({...event,code:'Space',repeat:false})
+      const press=()=> input!=='pointer'
+        ? c.events.get('keydown')({...event,code:input==='w'?'KeyW':'Space',repeat:false})
         : c.events.get('pointerdown')({...event,button:0,isPrimary:true});
       press();
       const game=c.controller.game, startY=game.bird.y;

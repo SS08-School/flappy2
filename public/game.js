@@ -4,6 +4,7 @@ import { TRANSITION_TIMING as TIMING, resultPresentation, transitionEase } from 
 import { flapAngle, impactPresentation, wingPose, idleBob } from './bird-presentation.mjs';
 import { GameAudio, DEATH_SOUND_DELAY } from './audio.mjs';
 import { MedalGlimmer } from './medal-presentation.mjs';
+import { pipePose, pipeShaftLength, pipeBounds } from './difficulty.mjs';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d'), ui = $('game-ui');
@@ -38,7 +39,7 @@ const game = new Game({ onEvent(type, data) {
   }
   if (type === 'score') {
     audio.play('point');
-    canvas.setAttribute('aria-label', `Score ${data.score}. Tap, Space, or Up to flap.`);
+    canvas.setAttribute('aria-label', `Score ${data.score}. Tap, Space, W, or Up to flap.`);
   }
   if (type === 'over') {
     if (!impact) { impact = { elapsed: 0, startingAngle: birdTilt, wing: lastWing }; previousBest = best; }
@@ -117,7 +118,7 @@ document.addEventListener('pointerdown', event => {
 }, { capture: true, passive: false });
 document.addEventListener('keydown', event => {
   // Escape deliberately has no game action.
-  if (['Space', 'ArrowUp', 'Enter'].includes(event.code) && !event.target.closest('button')) {
+  if (['Space', 'ArrowUp', 'KeyW', 'Enter'].includes(event.code) && !event.target.closest('button')) {
     event.preventDefault(); if (!event.repeat) flap();
   }
 }, { capture: true });
@@ -180,7 +181,7 @@ function advance(time) {
       }
     }
   }
-  if (!impact) landDistance += PHYSICS.speed * dt;
+  if (!impact) landDistance += game.speed * dt;
 }
 function frame(time) {
   requestAnimationFrame(frame);
@@ -197,8 +198,21 @@ function frame(time) {
   drawBackground(ctx, width, game.height, ground, night);
   const pose = game.presentation();
   for (const pipe of game.pipes) {
+    const bounds = pipe.level === 'final' ? pipeBounds(pipe, ground, pose.pipeOffset)
+      : { minX: pipe.x + pose.pipeOffset, maxX: pipe.x + pose.pipeOffset + pipe.width };
+    if (bounds.maxX < 0 || bounds.minX > width) continue;
+    if (pipe.level === 'final') {
+      const shape = pipePose(pipe, pose.pipeOffset);
+      const length = pipeShaftLength(pipe, ground);
+      for (const [post, up] of [[shape.top, true], [shape.bottom, false]]) {
+        ctx.save(); ctx.translate(pipe.x + pose.pipeOffset + pipe.width / 2 + post.x, post.y); ctx.rotate(post.angle);
+        drawPipe(ctx, -pipe.width / 2, up ? -length : 0, pipe.width, length, up); ctx.restore();
+      }
+      continue;
+    }
     drawPipe(ctx, pipe.x + pose.pipeOffset, 0, pipe.width, pipe.center - pipe.gap / 2, true);
-    drawPipe(ctx, pipe.x + pose.pipeOffset, pipe.center + pipe.gap / 2, pipe.width, ground - pipe.center - pipe.gap / 2);
+    // Hide the shaft's final pixel beneath the foreground at every scale.
+    drawPipe(ctx, pipe.x + pose.pipeOffset, pipe.center + pipe.gap / 2, pipe.width, ground - pipe.center - pipe.gap / 2 + 1);
   }
   if (loaded) {
     const wing = impact ? impact.wing : wingPose(clock);

@@ -11,3 +11,5 @@ The yellow bird, day/night backgrounds, ground, pipes, title, Get Ready instruct
 The user supplied `wing.mp3`, `hit.mp3`, `die.mp3`, `swooshing.mp3` and `Flappy_Bird_Point_Sound.ogg` in `data/sound effects/`. They are copied byte-for-byte to `public/assets/audio/`. No sound was downloaded from another game project or generated. The reference recording is used for timing analysis only and is not shipped.
 
 The reference video's recording overlays and watermarks are not part of the game and are not reproduced. Rate and leaderboard buttons currently display the original graphics without opening an external service.
+
+Final difficulty uses the same official green pipe crops, including the opposing upper/lower banks. Numeric section layouts and movement behaviors reference the supplied [High Score 999 video](https://www.youtube.com/watch?v=YHH2101OFfI). Sections are shortened and aligned for playability; grouped gates share constant-speed movement with immediate reversals, and ordinary fast gates lunge left. No images, sounds, colored pipes, flowers, Mario or other assets from that recording are shipped, and no AI-generated assets are used.

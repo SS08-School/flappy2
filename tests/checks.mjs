@@ -37,7 +37,7 @@ export function checkEngine() {
   assert.equal(events.slice(topEvents).filter(e => e.type === 'over').length, 1);
   game.start(); game.pipes = [{ x: game.bird.x - 20, center: game.bird.y, gap: 100, width: 52, scored: false }];
   game.update(.02); assert.equal(game.score, 1); game.update(.02); assert.equal(game.score, 1, 'one point per pipe');
-  game.start(); game.score = 999; game.update(PHYSICS.step);
+  game.start(); game.score = 4; game.update(PHYSICS.step);
   assert.equal(game.distance, 2, 'fixed native two-pixel step does not change with score');
   assert.ok(game.pipes.every(p => p.gap === 100 && p.width === 52));
   assert.ok(!('health' in game) && !('pickups' in game) && !('active' in game), 'no proposal mechanics');
@@ -74,7 +74,8 @@ export function checkPipeTiming() {
       for(let frame=0;frame<fps*8;frame++) {
         game.bird.y=game.ground/2;game.bird.vy=0;game.update(1/fps);
         for(const pipe of game.pipes)if(!seen.has(pipe)){assert.ok(pipe.x>=width-1e-8,'new pipes are queued offscreen without popping in');seen.add(pipe);}
-        for(let i=1;i<game.pipes.length;i++)assert.ok(Math.abs(game.pipes[i].x-game.pipes[i-1].x-156)<1e-8,'pipe spacing stays constant');
+        const classic=game.pipes.filter(p=>p.level===1);
+        for(let i=1;i<classic.length;i++)assert.ok(Math.abs(classic[i].x-classic[i-1].x-156)<1e-8,'level 1 pipe spacing stays constant');
       }
       assert.equal(game.state,'playing');
       assert.equal(points[0],3.666667,'opening score arrives without the old 2.2 second delay');
@@ -115,7 +116,7 @@ export async function checkServer() {
       assert.equal(sound.headers.get('content-type'), file.endsWith('.ogg') ? 'audio/ogg' : 'audio/mpeg');
       assert.deepEqual(Buffer.from(await sound.arrayBuffer()), await readFile(new URL('../public/assets/audio/' + file, import.meta.url)));
     }
-    for (const file of ['audio.mjs','medal-presentation.mjs']) assert.equal((await fetch(base + '/' + file)).status, 200);
+    for (const file of ['audio.mjs','medal-presentation.mjs','difficulty.mjs','final-chunks.mjs','pipe-safety.mjs']) assert.equal((await fetch(base + '/' + file)).status, 200);
     for (const path of ['/server.mjs','/data/flabby.sqlite','/api/me','/api/leaderboard','/assets/flappy/sfx_wing.wav','/assets/flappy/%2e%2e%2fserver.mjs']) assert.equal((await fetch(base + path)).status, 404, `${path} is unavailable`);
     assert.equal((await fetch(base + '/api/register', { method: 'POST' })).status, 405);
     return 'Server: static game, official atlas, removed APIs, private-file protection, and no session cookies passed.';

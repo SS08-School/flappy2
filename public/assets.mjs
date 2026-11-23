@@ -85,14 +85,14 @@ export function drawPipe(ctx, x, y, width, height, up = false, alpha = 1) {
   if (height <= naturalHeight) {
     const sourceHeight = height / scale;
     ctx.drawImage(atlas, s.x, up ? s.y + s.height - sourceHeight : s.y, s.width, sourceHeight,
-      x, Math.round(y), width, height);
+      x, y, width, height);
   } else {
     // Extend only the uniform shaft, preserving the native cap and pipe width.
     const extension = height - naturalHeight;
     ctx.drawImage(atlas, s.x, up ? s.y : s.y + 30, s.width, 1,
-      x, Math.round(up ? y : y + naturalHeight), width, extension);
+      x, up ? y : y + naturalHeight, width, extension);
     ctx.drawImage(atlas, s.x, s.y, s.width, s.height,
-      x, Math.round(up ? y + extension : y), width, naturalHeight);
+      x, up ? y + extension : y, width, naturalHeight);
   }
   ctx.restore();
 }

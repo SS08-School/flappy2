@@ -1,6 +1,6 @@
 # Flappy Bird — v1.3 reference build
 
-Recreation of the [supplied gameplay reference](https://www.youtube.com/watch?v=8nJhk_u4krI), using the uploaded official sprite sheet and supplied sound effects. The bird stays yellow. Recording watermarks are omitted.
+Flappy Bird v1.3 movement and graphics based on the [supplied gameplay reference](https://www.youtube.com/watch?v=8nJhk_u4krI), using the uploaded official sprite sheet and supplied sound effects. The bird stays yellow. A test final difficulty randomly selects frame-traced video chunks. Recording watermarks are omitted.
 
 ## Run
 
@@ -14,7 +14,7 @@ Open **http://localhost:3000**. `npm run dev` restarts the server on source chan
 
 ## Controls
 
-Select Play, then click or tap anywhere, including the black bars, or press Space/Up to flap. **Escape does nothing and never resets the run.** Rate and leaderboard buttons are visual placeholders, as requested. Sound unlocks on interaction; the idle bird animation is silent.
+Select Play, then click or tap anywhere, including the black bars, or press Space/Up/W to flap. **Escape does nothing and never resets the run.** Rate and leaderboard buttons are visual placeholders, as requested. Sound unlocks on interaction; the idle bird animation is silent.
 
 ## Reference measurements
 
@@ -43,6 +43,20 @@ The ground scroll wraps at the atlas's 24-pixel pattern repeat, overlapping matc
 
 The opening pipe has no spawn delay. Its initial distance is fixed using the 16:10 view, placing it exactly outside that view and farther offscreen in narrower windows. The first point arrives about 3.67 seconds into the run at every supported aspect ratio; later pipes follow every 1.3 seconds. Following pipes are queued a full spacing ahead of the shared start edge, so they always exist before entering the visible screen. Resizing preserves each pipe's distance from the bird.
 
+## Difficulty levels
+
+**Level 1** is the unchanged original pipe layout: fixed 120 px/s travel, 156 px spacing and 100 px gaps. **Final** activates at score **5** for testing (`FINAL_TEST_SCORE` in `public/difficulty.mjs`). No intermediate levels are implemented.
+
+Final always opens with one moving pair followed by two ordinary spaced gates. It then chooses among **eight distinct sections** from the [High Score 999 video](https://www.youtube.com/watch?v=YHH2101OFfI) and the supplied screenshots: a five-column stationary tunnel, a three-column rising group, two three-pair diagonal banks, reversing gates, two four-column stepped tunnels, and ordinary gates that lunge left. Dense sections cannot immediately repeat the same family. Tunnel lengths are deliberately shortened as requested.
+
+Grouped pipes use one shared motion clock. The rising trio travels upward together at about 17.8 native px/s while the player crosses it. Diagonal banks remain parallel with clean, non-overlapping spacing. Moving pipes travel at constant speed and reverse instantly at fixed endpoints; there is no sine easing or random phase noise. The brisk reversing gates have a 44-pixel amplitude and 1.4-second period. Left-rushing gates start their 96-pixel lunge from a readable approach distance, and scoring follows their actual position.
+
+Each section reserves its entire visible shaft footprint at both motion extremes, followed by 104–156 native pixels of clear space. This keeps diagonal tails and fast gates out of neighboring formations without concatenating dense tunnels. Passage fitting translates a whole roof or floor together when extra room is needed, preserving orderly cap alignment. Moving passages are checked with their actual motion, rather than widened into an oversized stationary corridor. The bird is never carried by the pipes; it uses the original gravity and flap impulse throughout.
+
+The level switches on the fifth point. Final is queued ahead of time immediately after the fifth classic gate, preserving the normal 156-pixel seam. The switch does not replace visible obstacles or restart the spawn clock. Final's measured horizontal travel is 118 native px/s. Rendering, collisions and scoring share the same transforms and freeze on impact. All images remain native-width crops of the uploaded green pipes; no other graphics or controls are added.
+
+The source timestamps in `public/final-chunks.mjs` identify each reference behavior. Geometry is aligned and shortened for this project, with playability corrections, rather than presented as pixel-exact recovered game code. The earlier warped perspective samples are excluded. The reference's 400-pixel ground is aligned to the current viewport without stretching sprites.
+
 Rendering uses `requestAnimationFrame` with a 240 FPS ceiling. Lower-refresh displays run at their available rate. Drawing previews the unsimulated fraction of the next fixed step using the current flap velocity, instead of blending past positions a full step behind. The preview stays within the screen and never changes physics, collision tests, scoring or difficulty. Keyboard and pointer inputs apply immediately and appear on the next displayed frame. The browser and monitor determine the actual achievable frame rate.
 
 Input handlers synchronize the simulation to the current event time, commit any pending fraction with the old velocity, then apply the full flap impulse immediately. Pre-key time cannot weaken a new flap after a slow frame. Fractional steps compose to the same original 60 Hz flight arc; the render limiter only controls drawing. Small timestamp jitter is tolerated without dropping a refresh, and hidden tabs pause without building up catch-up time. There is no debounce or intentional jump delay; browser scheduling and hardware still determine physical input-to-display latency.
@@ -53,7 +67,7 @@ Each actual flap plays wing, each passed pipe plays point, and a collision plays
 
 The medal glimmer follows the supplied `17-57-55` capture: small, medium, large, medium, small official sparkle frames at 10 Hz. Each half-second pulse stays at one random position, then jumps to a new position around the medal. It starts with the awarded medal and is omitted for reduced motion.
 
-BEST persists silently in browser local storage. There are no accounts, custom dialogs, powerups, unlocks, extra lives, difficulty ramps, downloaded graphics or fonts. Existing ignored database files remain untouched.
+BEST persists silently in browser local storage. There are no accounts, custom dialogs, powerups, unlocks, extra lives, downloaded graphics or fonts. Existing ignored database files remain untouched.
 
 ## Verify
 
@@ -61,6 +75,6 @@ BEST persists silently in browser local storage. There are no accounts, custom d
 npm test
 ```
 
-Checks cover the first-hit loss, delayed pipes, fixed spacing/speed, 60 Hz stepping, portrait sizing, Escape behavior, black-bar input, scene/result staging, official atlas integrity, audio delivery and events, audio unlock/cancellation, and stationary glimmer pulses. Client checks use DOM/canvas and audio test doubles; they do not replace browser playback verification.
+Checks cover the first-hit loss, delayed pipes, fixed spacing/speed, 60 Hz stepping, portrait sizing, Escape behavior, black-bar input, scene/result staging, official atlas integrity, audio delivery and events, audio unlock/cancellation, and stationary glimmer pulses. Passage checks cover all 72 ordered section joins, full-shaft overlap at multiple movement phases, and simulated flights through every pairing and seeded long runs in landscape and portrait geometry. Flight searches integrate the original 60 Hz physics, with at least 200 ms between flap presses; they do not teleport the bird or change its physics. Client checks use DOM/canvas and audio test doubles; they do not replace browser playback verification.
 
 `public/engine.mjs` contains physics, `public/assets.mjs` defines official crops, `public/game.js` renders the reference screens, and the presentation modules contain visual timing. See [ASSET_CREDITS.md](ASSET_CREDITS.md).
