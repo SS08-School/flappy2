@@ -18,7 +18,9 @@ Select Play, then click or tap anywhere, including the black bars, or press Spac
 
 ## Reference measurements
 
-The viewport is locked to the video's **3:4** shape, at a native **288 × 384** logical resolution. The body class `aspect-locked` controls the lock; keep it until the user requests unlocking.
+The game adapts to the available browser viewport, up to a maximum landscape aspect ratio of **16:10**. Portrait phones and narrower displays fill the page; wider displays get centered side bars. CSS uses dynamic viewport units to follow mobile browser controls. The **288 × 384** reference defines sprite scale and UI measurements; wider views extend the world horizontally without stretching the artwork.
+
+Continue development on `main`. The `Flappy-Bird-Original-Mobile-Version-11-23-2026` branch preserves the original mobile version and must remain unchanged.
 
 | Element | Native measurement |
 | --- | --- |
@@ -37,7 +39,7 @@ The viewport is locked to the video's **3:4** shape, at a native **288 × 384** 
 
 The skyline is stationary; ground and pipes move at the same speed. Day and night backgrounds use the uploaded atlas, with daytime on the first run and random variants afterward. The title includes the original Rate, Play, leaderboard and copyright graphics. All visible words and digits come from the sheet.
 
-The ground scroll wraps at the atlas's 24-pixel pattern repeat, keeping a single draw across the locked viewport and overlapping matching repeats in wider views to prevent seams. Touching the top edge ends control and triggers the hit/death fall, just like a pipe collision.
+The ground scroll wraps at the atlas's 24-pixel pattern repeat, overlapping matching repeats in wider views to prevent seams. Touching the top edge ends control and triggers the hit/death fall, just like a pipe collision.
 
 Rendering uses `requestAnimationFrame` with a 240 FPS ceiling. Lower-refresh displays run at their available rate. Drawing previews the unsimulated fraction of the next fixed step using the current flap velocity, instead of blending past positions a full step behind. The preview stays within the screen and never changes physics, collision tests, scoring or difficulty. Keyboard and pointer inputs apply immediately and appear on the next displayed frame. The browser and monitor determine the actual achievable frame rate.
 

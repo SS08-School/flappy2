@@ -175,3 +175,32 @@ export async function checkInputLatency() {
   }
   return 'Input latency: keyboard and pointer flaps rise on the next frame at 60–240 Hz, without advancing physics or replaying old motion.';
 }
+
+export async function checkResponsiveClient() {
+  for (const [displayWidth,displayHeight] of [[1920,1200],[1920,1080],[3440,1440],[1024,768],[390,844],[844,390]]) {
+    const width=Math.min(displayWidth,displayHeight*16/10), height=displayHeight;
+    const c=await createClient({width,height}), game=c.controller.game;
+    c.tick(.02);
+    const context=c.elements.get('game').context;
+    const centered=sprite=>{
+      const command=context.commands.find(command=>command.kind==='image'&&command.args[0]===sprite[0]&&command.args[1]===sprite[1]);
+      assert.ok(command,`sprite is rendered at ${displayWidth}×${displayHeight}`);
+      const center=(command.args[4]+command.args[6]/2)*command.matrix[0]+command.matrix[4];
+      assert.ok(Math.abs(center-width/2)<=width/game.width/2+1e-7, 'official UI remains horizontally centered within native pixel rounding');
+    };
+    centered([702,182]);
+    assert.ok(Math.abs(game.width/game.height-width/height)<1e-9,'game world follows the fitted frame aspect ratio');
+    assert.ok(Math.abs(parseFloat(c.elements.get('game-ui').style['--rate-x'])+37-game.width/2)<1e-7);
+    assert.equal(parseFloat(c.elements.get('game-ui').style['--buttons-y']),game.ground-60);
+    c.controller.prepareRun(); c.tick(.02); centered([584,116]);
+    c.controller.flap(); game.score=33; game.hit(); game.end(); c.tick(.02); centered([0,516]);
+    assert.equal(c.elements.get('play-controls').hidden,false,'replay remains available on each display shape');
+  }
+  const c=await createClient({width:390,height:844});c.controller.prepareRun();c.controller.flap();
+  const game=c.controller.game;game.score=8;
+  game.pipes=[{x:game.bird.x+100,center:game.ground/2,gap:100,width:52,scored:false}];
+  c.resize(1920,1200);
+  assert.equal(game.state,'playing');assert.equal(game.score,8);
+  assert.ok(Math.abs(game.pipes[0].x-game.bird.x-100)<1e-9,'resize preserves obstacle distance without resetting the run');
+  return 'Responsive layout: phone/tablet/16:10/capped wide frames keep sprites and screens centered; live resize preserves the run.';
+}
