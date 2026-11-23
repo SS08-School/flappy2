@@ -28,7 +28,7 @@ Continue development on `main`. The `Flappy-Bird-Original-Mobile-Version-11-23-2
 | Foreground ground strip | 48 px; ground at y=336 |
 | Pipe speed / spacing / gap | 120 px/s / 156 px / 100 px |
 | First pipe | Starts offscreen on the first flap, 426.48 native px ahead of the bird, based on the maximum 16:10 world |
-| Simulation | Fixed 60 Hz |
+| Simulation | 60 Hz steps, with fractional steps at exact input times |
 | Rendering | Display refresh rate, capped at 240 FPS; fractional-step bird/pipe previews and continuous ground scrolling |
 | Flap impulse / gravity | −330 px/s / 1100 px/s², fitted from the recorded flight arc |
 | Large score | Centered at y=18, official 24 × 36 glyphs |
@@ -44,6 +44,8 @@ The ground scroll wraps at the atlas's 24-pixel pattern repeat, overlapping matc
 The opening pipe has no spawn delay. Its initial distance is fixed using the 16:10 view, placing it exactly outside that view and farther offscreen in narrower windows. The first point arrives about 3.67 seconds into the run at every supported aspect ratio; later pipes follow every 1.3 seconds. Following pipes are queued a full spacing ahead of the shared start edge, so they always exist before entering the visible screen. Resizing preserves each pipe's distance from the bird.
 
 Rendering uses `requestAnimationFrame` with a 240 FPS ceiling. Lower-refresh displays run at their available rate. Drawing previews the unsimulated fraction of the next fixed step using the current flap velocity, instead of blending past positions a full step behind. The preview stays within the screen and never changes physics, collision tests, scoring or difficulty. Keyboard and pointer inputs apply immediately and appear on the next displayed frame. The browser and monitor determine the actual achievable frame rate.
+
+Input handlers synchronize the simulation to the current event time, commit any pending fraction with the old velocity, then apply the full flap impulse immediately. Pre-key time cannot weaken a new flap after a slow frame. Fractional steps compose to the same original 60 Hz flight arc; the render limiter only controls drawing. Small timestamp jitter is tolerated without dropping a refresh, and hidden tabs pause without building up catch-up time. There is no debounce or intentional jump delay; browser scheduling and hardware still determine physical input-to-display latency.
 
 Screen changes fade through black. The Game Over heading, slide-up card, score count-up, medal and buttons appear in the reference order. Numeric timings are measured from a compressed 30 fps recording, so they are approximations rather than recovered original source constants.
 

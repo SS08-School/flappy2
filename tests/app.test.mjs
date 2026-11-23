@@ -1,6 +1,6 @@
 import test from 'node:test';
 import { checkEngine, checkServer, checkAssets, checkPipeTiming } from './checks.mjs';
-import { checkClient, checkGroundLoop, checkRefreshRates, checkInputLatency, checkResponsiveClient } from './client-checks.mjs';
+import { checkClient, checkGroundLoop, checkRefreshRates, checkInputLatency, checkResponsiveClient, checkPreciseInputTiming } from './client-checks.mjs';
 import { checkPresentation } from './presentation-checks.mjs';
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 import { checkScoreDigits } from './score-checks.mjs';
@@ -18,3 +18,4 @@ test('scorecard digit identity from actual sprite pixels', checkScoreDigits);
 test('next-frame keyboard and pointer response', checkInputLatency);
 test('responsive game screens and live resizing', checkResponsiveClient);
 test('aspect-independent offscreen pipe timing', checkPipeTiming);
+test('precise input timestamps, frame stalls and refresh jitter', checkPreciseInputTiming);

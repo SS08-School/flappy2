@@ -11,6 +11,7 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let screen = 'home', loaded = false, view, night = false, rounds = 0;
 let clock = 0, previous = performance.now(), landDistance = 0;
 const RENDER_INTERVAL = 1000 / 240;
+const FRAME_TOLERANCE = .25; // Avoid missing a refresh over sub-millisecond timestamp jitter.
 let nextFrameAt = previous + RENDER_INTERVAL;
 let best = 0, previousBest = 0, finalScore = 0, newBest = false;
 let scene = { phase: reducedMotion ? 'idle' : 'in', elapsed: 0 }, sceneBlack = reducedMotion ? 0 : 1;
@@ -91,6 +92,7 @@ function showReady() {
   updateControls(); canvas.focus({ preventScroll: true });
 }
 function prepareRun() {
+  advance(performance.now());
   if (!loaded || scene.phase !== 'idle' || !['home', 'over'].includes(screen)) return;
   if (screen === 'over' && !resultState().finished) return;
   audio.unlock(); audio.stop(); audio.play('swoosh');
@@ -98,25 +100,30 @@ function prepareRun() {
   scene = { phase: 'out', elapsed: 0 }; updateControls();
 }
 function flap() {
-  audio.unlock();
-  if (!loaded) { initializeAssets(); return; }
+  if (!loaded) { audio.unlock(); initializeAssets(); return; }
+  advance(performance.now());
   if (scene.phase !== 'idle') return;
   if (screen === 'ready') {
     const bob = reducedMotion ? 0 : idleBob(clock);
     game.start(); game.bird.y += bob;
     screen = 'playing'; flapElapsed = 0; readyExitAge = 0; updateControls();
   } else if (game.state === 'playing') { game.flap(); flapElapsed = 0; }
+  audio.unlock();
 }
 $('play-button').addEventListener('click', prepareRun);
 document.addEventListener('pointerdown', event => {
   if (event.button !== 0 || event.isPrimary === false || event.target.closest('button')) return;
   event.preventDefault(); flap();
-});
+}, { capture: true, passive: false });
 document.addEventListener('keydown', event => {
   // Escape deliberately has no game action.
   if (['Space', 'ArrowUp', 'Enter'].includes(event.code) && !event.target.closest('button')) {
     event.preventDefault(); if (!event.repeat) flap();
   }
+}, { capture: true });
+
+document.addEventListener('visibilitychange', () => {
+  previous = performance.now(); nextFrameAt = previous;
 });
 
 function advanceScene(dt) {
@@ -154,13 +161,10 @@ function renderResults(xOffset, yOffset) {
   }
   ctx.restore();
 }
-function frame(time) {
-  requestAnimationFrame(frame);
-  if (time + 1e-7 < nextFrameAt) return;
-  // Advance the deadline by whole slots to keep 144/165/360 Hz displays from
-  // drifting or dropping to a divisor of their refresh rate. Never catch up by drawing twice.
-  nextFrameAt += (Math.floor((time - nextFrameAt + 1e-7) / RENDER_INTERVAL) + 1) * RENDER_INTERVAL;
-  const elapsed = Math.max(0, (time - previous) / 1000 || .016), dt = Math.min(elapsed, .1); previous = time;
+function advance(time) {
+  const elapsed = Math.max(0, (time - previous) / 1000), dt = Math.min(elapsed, .1);
+  if (elapsed === 0) return;
+  previous = time;
   advanceScene(elapsed);
   if (scene.phase !== 'hold') readyAge += elapsed;
   if (readyExitAge !== null) readyExitAge += elapsed;
@@ -177,6 +181,15 @@ function frame(time) {
     }
   }
   if (!impact) landDistance += PHYSICS.speed * dt;
+}
+function frame(time) {
+  requestAnimationFrame(frame);
+  if (document.hidden) { previous = time; nextFrameAt = time + RENDER_INTERVAL; return; }
+  // Simulation and input timing do not wait for the render limiter.
+  advance(time);
+  if (time + FRAME_TOLERANCE < nextFrameAt) return;
+  // Retain the 240 FPS budget without making tiny clock jitter skip a refresh.
+  nextFrameAt += (Math.floor((time - nextFrameAt + FRAME_TOLERANCE) / RENDER_INTERVAL) + 1) * RENDER_INTERVAL;
   updateControls();
   const factor = view.scale * view.dpr;
   ctx.setTransform(factor, 0, 0, factor, 0, 0); ctx.imageSmoothingEnabled = false;

@@ -41,7 +41,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
     querySelectorAll:()=>[...elements.values()].filter(e=>e.dataset.sprite),
   };
   const sandbox = {
-    document, devicePixelRatio:1, Game, METRICS, PHYSICS, viewportLayout, console, performance:{now:()=>0},
+    document, devicePixelRatio:1, Game, METRICS, PHYSICS, viewportLayout, console, performance:{now:()=>now},
     GameAudio: class { constructor() { return audio; } }, DEATH_SOUND_DELAY: .2,
     matchMedia:()=>({matches:reducedMotion}), ResizeObserver:class { observe() {} },
     requestAnimationFrame:callback=>frames.push(callback),
@@ -58,6 +58,8 @@ export async function createClient({ reducedMotion = true, width = 480, height =
   await Promise.resolve();
   return {controller,elements,events,stored,images,
     tick(seconds) { now+=seconds*1000; frames.shift()(now); },
+    elapse(seconds) { now+=seconds*1000; },
+    visibility(hidden) { document.hidden=hidden; events.get('visibilitychange')(); },
     resize(w,h) { rect={width:w,height:h}; controller.resize(); },
   };
 }
@@ -203,4 +205,48 @@ export async function checkResponsiveClient() {
   assert.equal(game.state,'playing');assert.equal(game.score,8);
   assert.ok(Math.abs(game.pipes[0].x-game.bird.x-100)<1e-9,'resize preserves obstacle distance without resetting the run');
   return 'Responsive layout: phone/tablet/16:10/capped wide frames keep sprites and screens centered; live resize preserves the run.';
+}
+
+export async function checkPreciseInputTiming() {
+  const target={closest:()=>null}, press=c=>c.events.get('keydown')({code:'Space',repeat:false,target,preventDefault(){}});
+  const arc=(y,vy,t)=>y+vy*t+PHYSICS.gravity*t*(t+PHYSICS.step)/2;
+  const fixed=new Game(), split=new Game();fixed.start();split.start();fixed.update(PHYSICS.step);
+  split.step(.007);split.step(PHYSICS.step-.007);
+  assert.ok(Math.abs(fixed.bird.y-(188+(PHYSICS.flap+PHYSICS.gravity*PHYSICS.step)*PHYSICS.step))<1e-9,'full steps preserve the original flight arc');
+  assert.ok(Math.abs(fixed.bird.y-split.bird.y)<1e-9&&Math.abs(fixed.bird.vy-split.bird.vy)<1e-9,'fractional boundaries compose without changing the arc');
+  for(const gap of [0,.001,.004,.008,.015,.033,.08]) {
+    const c=await createClient();c.controller.prepareRun();c.elapse(gap);press(c);
+    const game=c.controller.game, y=game.bird.y;
+    assert.equal(game.bird.vy,PHYSICS.flap);assert.equal(game.elapsed,0,'first flap excludes time spent waiting on the ready screen');
+    c.tick(1/240);
+    assert.ok(Math.abs(game.presentation().birdY-arc(y,PHYSICS.flap,1/240))<1e-8,'late-frame first flap has exactly the same strength');
+    c.tick(.05);c.elapse(.023);press(c);
+    assert.equal(game.bird.vy,PHYSICS.flap);assert.equal(game.accumulator,0,'pre-key fractional time is committed before the impulse');
+    const from=game.bird.y;c.tick(1/240);
+    assert.ok(Math.abs(game.presentation().birdY-arc(from,PHYSICS.flap,1/240))<1e-8,'new flap never consumes pre-key time');
+  }
+  let baseline;
+  for(const fps of [30,60,144,240,360]) {
+    const c=await createClient();c.controller.prepareRun();press(c);
+    const inputs=[.137,.487,.913];let now=0,frame=1,index=0;
+    while(now<1-1e-10) {
+      const nextFrame=Math.min(1,frame/fps), nextInput=inputs[index]??Infinity;
+      if(nextInput<=nextFrame) {c.elapse(nextInput-now);now=nextInput;press(c);index++;}
+      else {c.tick(nextFrame-now);now=nextFrame;frame++;}
+    }
+    const game=c.controller.game, pose=game.presentation();
+    assert.equal(game.state,'playing');
+    const sample=[pose.birdY,game.bird.vy+PHYSICS.gravity*game.accumulator,game.pipes[0].x+pose.pipeOffset-game.bird.x];
+    baseline ||= sample;
+    sample.forEach((value,i)=>assert.ok(Math.abs(value-baseline[i])<1e-8,'identical timestamped presses produce identical flight at every FPS'));
+  }
+  const paused=await createClient();paused.controller.prepareRun();press(paused);paused.tick(.02);
+  const before=paused.controller.game.elapsed;paused.visibility(true);paused.tick(2);
+  assert.equal(paused.controller.game.elapsed,before,'hidden tabs do not accumulate falling time');
+  paused.visibility(false);press(paused);const resumed=paused.controller.game.bird.y;paused.tick(1/240);
+  assert.ok(Math.abs(paused.controller.game.presentation().birdY-arc(resumed,PHYSICS.flap,1/240))<1e-8,'returning to the tab cannot age a new flap');
+  const jitter=await createClient();let time=0;
+  for(let frame=1;frame<=240;frame++){const next=frame/240+(frame%2?-.0001:.0001);jitter.tick(next-time);time=next;}
+  assert.equal(jitter.elements.get('game').context.renderCount,240,'small timestamp jitter does not skip 240 Hz refreshes');
+  return 'Precise input: between-frame and stalled-frame presses retain full strength, timestamped flight matches across FPS, and tab/jitter handling avoids added delay.';
 }

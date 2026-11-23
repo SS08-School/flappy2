@@ -35,12 +35,11 @@ export class Game {
   }
   presentation() {
     if (!['playing', 'falling'].includes(this.state)) return { birdY: this.bird.y, pipeOffset: 0 };
-    // Preview only the remaining fraction of the next fixed step. Blending
-    // historical positions added a full step of visible input latency.
+    // Preview the unsimulated fraction using the same arc as committed steps.
     const remainder = Math.max(0, Math.min(PHYSICS.step, this.accumulator));
     return {
       birdY: Math.max(this.bird.radius, Math.min(this.ground - this.bird.radius,
-        this.bird.y + (this.bird.vy + PHYSICS.gravity * PHYSICS.step) * remainder)),
+        this.bird.y + this.bird.vy * remainder + PHYSICS.gravity * remainder * (remainder + PHYSICS.step) / 2)),
       pipeOffset: this.state === 'playing' ? -PHYSICS.speed * remainder : 0,
     };
   }
@@ -51,6 +50,11 @@ export class Game {
   }
   start() { this.reset(); this.state = 'playing'; this.spawnPipe(this.pipeStartX); this.flap(); }
   flap() {
+    if (this.state !== 'playing') return;
+    // Finish time BEFORE the input with the old velocity. The new impulse
+    // must never be aged by time that passed before the key/pointer event.
+    const pending = Math.max(0, this.accumulator); this.accumulator = 0;
+    if (pending > 1e-10) this.step(pending);
     if (this.state !== 'playing') return;
     this.bird.vy = PHYSICS.flap; this.onEvent('flap');
   }
@@ -73,8 +77,10 @@ export class Game {
     }
   }
   step(dt) {
+    // This composes exactly across fractional input boundaries and equals
+    // the original semi-implicit 60 Hz arc for a full fixed step.
+    this.bird.y += this.bird.vy * dt + PHYSICS.gravity * dt * (dt + PHYSICS.step) / 2;
     this.bird.vy += PHYSICS.gravity * dt;
-    this.bird.y += this.bird.vy * dt;
     if (this.state === 'playing' && this.bird.y - this.bird.radius <= 0) {
       this.bird.y = this.bird.radius; this.hit();
     }
