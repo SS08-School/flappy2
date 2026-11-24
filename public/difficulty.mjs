@@ -9,7 +9,7 @@ const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 export class FinalDirector {
   constructor(random=Math.random){
     this.random=random;this.nextLong=5+Math.floor(random()*3);this.recent=[];this.lastDescent=-Infinity;this.lastPlunger=-Infinity;this.lastRush=-Infinity;
-    this.pendingKind=null;this.sections=0;this.lastRushSection=-Infinity;
+    this.pendingKind=null;this.sections=0;this.lastRushSection=-Infinity;this.lastRoofSection=-Infinity;
   }
   next(id){
     let kind;
@@ -19,7 +19,7 @@ export class FinalDirector {
       this.nextLong=id+10+Math.floor(this.random()*5);kind=this.random()<.5?'long-dropping-tunnel':'long-low-tunnel';
     }else{
       const last=CAPTURED_FINAL_CHUNKS.find(c=>c.id===this.recent.at(-1));
-      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(this.sections>=5||!['rush','plunger'].includes(c.family))&&(c.family!=='rush'||id-this.lastRush>=6&&this.sections-this.lastRushSection>=6)&&(c.id!=='descending-pursuit'||id>=5&&id-this.lastDescent>=8)&&(c.id!=='tunnel-plunger'||id-this.lastPlunger>=8));
+      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(this.sections>=5||!['rush','plunger'].includes(c.family))&&(c.family!=='rush'||id-this.lastRush>=6&&this.sections-this.lastRushSection>=6)&&(c.motif!=='floor-bank'||this.sections-this.lastRoofSection>=7)&&(c.id!=='descending-pursuit'||id>=5&&id-this.lastDescent>=8)&&(c.id!=='tunnel-plunger'||id-this.lastPlunger>=8));
       const varied=pool.filter(c=>c.family!==last?.family);if(varied.length)pool=varied;
       const motifs=this.recent.map(k=>CAPTURED_FINAL_CHUNKS.find(c=>c.id===k)?.motif);
       const different=pool.filter(c=>!c.motif||!motifs.includes(c.motif));if(different.length)pool=different;
@@ -31,6 +31,7 @@ export class FinalDirector {
     if(kind==='descending-pursuit')this.lastDescent=id;
     if(kind==='tunnel-plunger')this.lastPlunger=id;
     if(CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind)?.family==='rush'){this.lastRush=id;this.lastRushSection=this.sections;}
+    if(CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind)?.motif==='floor-bank')this.lastRoofSection=this.sections;
     if(kind!=='rising-floor-interlude')this.sections++;
     this.recent.push(kind);if(this.recent.length>5)this.recent.shift();
     return kind;

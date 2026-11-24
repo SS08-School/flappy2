@@ -21,7 +21,8 @@ function rising(id,window=false){
 function bank(id,{continuation=false}={}){
   // 18–22 s: the leading trio rises and stays extended. The following two
   // posts rise together, reverse together, and finish their returns together.
-  const floorV=[223,223,223,309,309];
+  // The next floor is fixed: the low pair and this higher tip form a wave.
+  const floorV=[251,251,251,309,309,560];
   const profiles=[
     {trio:22,start:-.5,pair:54,lead:82,tail:116},
     {trio:26,start:-.67,pair:50,lead:72,tail:104},
@@ -29,14 +30,17 @@ function bank(id,{continuation=false}={}){
   ];
   const layout=random=>{
     const profile=profiles[Math.min(2,Math.floor(random()*3))];
+    // Keep the recorded end of the trio's rise, but spread its full ascent
+    // over the maximum widescreen approach instead of waiting visibly low.
+    const trioStart=-3.6,trioEnd=profile.start+65/profile.trio;
     const pairs=floorV.map((v,i)=>{
-      const group=i<3?0:1,bu=-182+i*54;
+      const group=i<3?0:i<5?1:2,bu=-182+i*54;
       const tx=i===0?96:292+(i-1)*54*Math.SQRT1_2,ty=i===0?72:50+(i-1)*54*Math.SQRT1_2;
       const bx=(bu+v)*Math.SQRT1_2-3,by=(v-bu)*Math.SQRT1_2-64,dx=Math.min(tx,bx)-26;
-      return {dx,top:[tx-dx-26,ty+64,Math.PI/4],noTop:i===4,roofGroup:i?1:0,minimumShaft:group?8:24,bottom:[bx-dx-26,by+64,-Math.PI/4],
-        bottomMotion:group?{type:'bank',from:125,to:-35,speed:profile.pair,start:1.06-160/profile.pair,returnSpeed:i===4?profile.tail:profile.lead,
+      return {dx,top:[tx-dx-26,ty+64,Math.PI/4],noTop:i===5,roofGroup:i?1:0,safetyGroup:group,minimumShaft:group===1?8:24,bottom:[bx-dx-26,by+64,-Math.PI/4],
+        bottomMotion:group===2?undefined:group===1?{type:'bank',from:125,to:-35,speed:profile.pair,start:1.06-160/profile.pair,returnSpeed:i===4?profile.tail:profile.lead,
           returnTo:i===4?-35+160*profile.tail/profile.lead:125,alongShaft:true,group}
-          :{type:'sweep',from:45,to:-20,speed:profile.trio,start:profile.start,alongShaft:true,group},
+          :{type:'sweep',from:45,to:-20,speed:65/(trioEnd-trioStart),start:trioStart,alongShaft:true,group},
       };
     });
     if(continuation)pairs.push(pair(530,138,282,{motion:rail(-40,50,48,-.5),safetyGroup:1,allowRoofOverlap:true,afterFloor:true}));

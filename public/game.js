@@ -111,9 +111,14 @@ function prepareRun() {
   if (reducedMotion) { showReady(); return; }
   scene = { phase: 'out', elapsed: 0 }; updateControls();
 }
-function flap() {
+function flap(inputTime) {
   if (!loaded) { audio.unlock(); initializeAssets(); return; }
-  advance(performance.now());
+  const now=performance.now();
+  // A busy frame can deliver an event after its physical press. Apply the
+  // impulse at that timestamp, not after simulating the queue delay as a fall.
+  // Old/foreign-clock timestamps must never rewind committed simulation.
+  const at=Number.isFinite(inputTime)&&inputTime>=0&&inputTime<=now?Math.max(previous,inputTime):now;
+  advance(at);
   if (scene.phase !== 'idle') return;
   if (screen === 'ready') {
     const bob = reducedMotion ? 0 : idleBob(clock);
@@ -125,13 +130,13 @@ function flap() {
 $('play-button').addEventListener('click', prepareRun);
 document.addEventListener('pointerdown', event => {
   if (event.button !== 0 || (event.target.closest('button')&&screen!=='ready'&&game.state!=='playing')) return;
-  event.preventDefault(); flap();
+  event.preventDefault(); flap(event.timeStamp);
 }, { capture: true, passive: false });
 document.addEventListener('keydown', event => {
   if(event.code==='Tab'){event.preventDefault();return;}
   // Escape deliberately has no game action.
   if (['Space', 'ArrowUp', 'KeyW', 'Enter'].includes(event.code) && (!event.target.closest('button')||screen==='ready'||game.state==='playing')) {
-    event.preventDefault(); if (!event.repeat) flap();
+    event.preventDefault(); if (!event.repeat) flap(event.timeStamp);
   }
 }, { capture: true });
 

@@ -350,5 +350,22 @@ export async function checkPreciseInputTiming() {
   const jitter=await createClient();let time=0;
   for(let frame=1;frame<=240;frame++){const next=frame/240+(frame%2?-.0001:.0001);jitter.tick(next-time);time=next;}
   assert.equal(jitter.elements.get('game').context.renderCount,240,'small timestamp jitter does not skip 240 Hz refreshes');
+  for(const input of ['pointer','keyboard','w'])for(const delay of [.001,.008,.02,.05]){
+    const immediate=await createClient(),queued=await createClient();
+    for(const c of [immediate,queued]){
+      c.controller.prepareRun();c.controller.flap();c.tick(.02);
+      c.controller.game.bird.y=180;c.controller.game.bird.vy=200;c.controller.game.accumulator=0;
+    }
+    const send=c=>input==='pointer'
+      ?c.events.get('pointerdown')({button:0,timeStamp:24,target,preventDefault(){}})
+      :c.events.get('keydown')({code:input==='w'?'KeyW':'Space',repeat:false,timeStamp:24,target,preventDefault(){}});
+    immediate.elapse(.004);send(immediate);immediate.elapse(delay);
+    queued.elapse(.004+delay);send(queued);
+    assert.equal(queued.controller.game.bird.vy,PHYSICS.flap,'queued input applies its impulse inside the event handler');
+    immediate.tick(1/240);queued.tick(1/240);
+    const a=immediate.controller.game,b=queued.controller.game;
+    assert.ok(Math.abs(a.presentation().birdY-b.presentation().birdY)<1e-8,'queued '+input+' uses press time, without adding the delivery delay to the fall');
+    assert.ok(Math.abs(a.distance-b.distance)<1e-8,'queued input does not change world speed');
+  }
   return 'Precise input: between-frame and stalled-frame presses retain full strength, timestamped flight matches across FPS, and tab/jitter handling avoids added delay.';
 }
