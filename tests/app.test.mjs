@@ -6,7 +6,7 @@ import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 import { checkScoreDigits } from './score-checks.mjs';
 import { checkBackgroundJoins } from './background-checks.mjs';
 import { checkDifficulty, checkLevel3Client, checkFloorVisibility } from './difficulty-checks.mjs';
-import { checkPassages } from './passage-checks.mjs';
+import { checkPassages, checkChunkContinuity } from './passage-checks.mjs';
 test('original game rules and widescreen geometry', checkEngine);
 test('static game server', checkServer);
 test('uploaded official sprite sheet only', checkAssets);
@@ -39,3 +39,4 @@ test('level 3 difficulty uses only official pipe graphics', checkLevel3Client);
 
 test('lower pipe caps stay fully visible above ground', checkFloorVisibility);
 test('every supported chunk join has a realistically flyable passage', checkPassages);
+test('continuous tunnel spacing across chunk joins', checkChunkContinuity);

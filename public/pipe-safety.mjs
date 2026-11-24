@@ -53,12 +53,15 @@ export function fitPassage({pipes,x,nextX,ground,entryCenter,pose,envelope,lengt
   }
   for(const pipe of pipes){
     const shape=envelope(pipe);
+    // An angled exit can need more flap headroom than the tighter tunnel
+    // leading into it. Keep that local clearance without widening the bank.
+    const clearanceHeight=Math.max(height,pipe.passageHeight||0);
     for(const [post,up] of [[shape.top,true],[shape.bottom,false]]){
       const polygon=postVertices(pipe,post,up,length(pipe,ground,up));let correction=0;
       for(const at of xs){
         const range=slabRange(polygon,at-PASSAGE.birdRadius,at+PASSAGE.birdRadius);if(!range)continue;
         const y=pathHeight(nodes,at);
-        correction=Math.max(correction,up?range[1]-(y-height/2):(y+height/2)-range[0]);
+        correction=Math.max(correction,up?range[1]-(y-clearanceHeight/2):(y+clearanceHeight/2)-range[0]);
       }
       if(correction>1e-7){const key=up?'upperRetraction':'lowerRetraction';pipe[key]=(pipe[key]||0)+correction+1;}
     }

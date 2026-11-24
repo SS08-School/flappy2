@@ -20,14 +20,14 @@ function rising(id,window=false){
 }
 function bank(id,{continuation=false}={}){
   // 18–22 s: the leading trio rises and stays extended. The following two
-  // posts have staggered reversals and finish their returns together. Their
+  // posts share both reversal and return times, with different travel speeds. Their
   // short stopped tips and the fixed third floor form three regular saw teeth.
   const pairFloor=308.9,sawStep=12,tailReturn=125+54*Math.SQRT1_2-sawStep;
   const floorV=[251,251,251,pairFloor,pairFloor,pairFloor+108+(125-2*sawStep)*Math.SQRT2];
   const profiles=[
-    {trio:22,start:-.5,pair:54,lead:82,tail:116},
-    {trio:26,start:-.67,pair:50,lead:72,tail:104},
-    {trio:24,start:-.6,pair:48,lead:76,tail:108},
+    {trio:22,start:-.5,pair:54,lead:82},
+    {trio:26,start:-.67,pair:50,lead:72},
+    {trio:24,start:-.6,pair:48,lead:76},
   ];
   const layout=random=>{
     const profile=profiles[Math.min(2,Math.floor(random()*3))];
@@ -36,8 +36,10 @@ function bank(id,{continuation=false}={}){
     const trioStart=-3.6,trioEnd=profile.start+65/profile.trio;
     const pairs=floorV.map((v,i)=>{
       const group=i<3?0:i<5?1:2,bu=-182+i*54;
-      const returnEnd=1.06+160/profile.lead;
-      const peak=i===4?returnEnd-(tailReturn+35)/profile.tail:1.06;
+      // The right post travels farther between its short saw-tooth endpoint
+      // and the peak. Scale both velocities by that distance so the pair
+      // starts, reverses and stops together, without a delayed reversal.
+      const low=i===4?tailReturn:125,travelRatio=(low+35)/160;
       const roofX=i===0?96:292+(i-1)*54*Math.SQRT1_2;
       // The fixed exit floor also carries the intermediate roof shaft that
       // bridges the long leading roof into the four-step slope. Its separate
@@ -45,8 +47,8 @@ function bank(id,{continuation=false}={}){
       const tx=i===5?194:roofX,ty=i===5?61:i===0?72:50+(i-1)*54*Math.SQRT1_2;
       const bx=(bu+v)*Math.SQRT1_2-3,by=(v-bu)*Math.SQRT1_2-64,dx=Math.min(roofX,bx)-26;
       return {dx,top:[tx-dx-26,ty+64,Math.PI/4],roofGroup:i===5?2:i?1:0,safetyGroup:group,minimumShaft:group===1?8:24,bottom:[bx-dx-26,by+64,-Math.PI/4],
-        bottomMotion:group===2?undefined:group===1?{type:'bank',from:125,to:-35,speed:profile.pair,start:peak-160/profile.pair,returnSpeed:i===4?profile.tail:profile.lead,
-          returnTo:i===4?tailReturn:125,alongShaft:true,group}
+        bottomMotion:group===2?undefined:group===1?{type:'bank',from:low,to:-35,speed:profile.pair*travelRatio,start:1.06-160/profile.pair,returnSpeed:profile.lead*travelRatio,
+          returnTo:low,alongShaft:true,group}
           :{type:'sweep',from:45,to:-20,speed:65/(trioEnd-trioStart),start:trioStart,alongShaft:true,group},
       };
     });
@@ -72,12 +74,12 @@ function diagonalTunnel(drop=false,high=false){
     return {dx,top:[tx-dx,ty+64-(high?24:0),Math.PI/4],bottom:[bx-dx-extension,by+64-extension-(high?40:0),-Math.PI/4]};
   });
     const floor=drop?270:278;
-    pairs.push(pair(550,178,floor,{top:[0,242,-Math.PI/4],bottom:[0,floor+64,Math.PI/4],allowRoofOverlap:true,overlayAfter:true,joinFloor:true,anchorEntry:false,safetyGroup:10}));
+    pairs.push(pair(550,178,floor,{top:[0,242,-Math.PI/4],bottom:[0,floor+64,Math.PI/4],allowRoofOverlap:true,overlayAfter:true,joinFloor:true,anchorEntry:false,safetyGroup:10,passageHeight:high?96:104}));
     return pairs;
   };
   // Reserve room for the full flap arc, not just a collision circle sliding
   // along the centerline. Keep the high variant slightly tighter.
-  return {id:high?'high-diagonal-tunnel':drop?'diagonal-drop-exit':'stationary-diagonal-tunnel',source:drop?[48,53]:[48,51],family:'diagonal',motif:'angled-tunnel',diagonal:true,passageHeight:high?96:104,anchor:92,minEntry:168,maxEntry:180,entryInset:32,clearance:3,pairs:layout(()=>.5),layout};
+  return {id:high?'high-diagonal-tunnel':drop?'diagonal-drop-exit':'stationary-diagonal-tunnel',source:drop?[48,53]:[48,51],family:'diagonal',motif:'angled-tunnel',diagonal:true,passageHeight:high?88:96,anchor:92,minEntry:168,maxEntry:180,entryInset:32,clearance:3,pairs:layout(()=>.5),layout};
 }
 function rushGates(short=false){
   const layout=random=>{

@@ -241,11 +241,12 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   const shared=Math.min(incoming.bottom,arrival.bottom)-Math.max(incoming.top,arrival.top);
   const needsJoin=shared<80||incoming.center<arrival.top+32||incoming.center>arrival.bottom-32;
   if(!needsJoin)return chunk;
-  const count=Math.max(1,Math.ceil(Math.abs(arrival.center-incoming.center)/28)-1),span=count*78;
+  const pitch=chunk.family==='rush'?78:width+3;
+  const count=Math.max(1,Math.ceil(Math.abs(arrival.center-incoming.center)/28)-1),span=count*pitch;
   const connectors=[];
   for(let i=0;i<count;i++){
     const center=clamp(incoming.center+(arrival.center-incoming.center)*(i+1)/(count+1),100,ground-112);
-    const native=center-(ground-336)/2,dx=i*78;
+    const native=center-(ground-336)/2,dx=i*pitch;
     const pipe={x:chunk.startX+dx,chunkOffset:dx,width,gap:124,level:3,kind:chunk.kind,chunkId:id,connector:true,scored:false,
       topRecord:[0,native-62+64,0],bottomRecord:[0,native+62+64,0],layoutOffset:0,verticalOffset:(ground-336)/2-64,
       safetyGroup:-i-1,shaftGap:3,referenceBirdX};
@@ -270,6 +271,12 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
   const dense=family=>['tunnel','rising','diagonal'].includes(family);
   if(dense(previous?.family))choices=choices.filter(c=>c.family!==previous.family);
   const source=kind===LEVEL3_OPENING_ID?LEVEL3_OPENING_CHUNK:kind?LEVEL3_CHUNKS.find(c=>c.id===kind):choices[Math.min(choices.length-1,Math.floor(random()*choices.length))];
+  // Accelerated approaches can reach back toward the preceding section.
+  // Keep their authored safety reservation out of ordinary tunnel joins.
+  if(entryPort&&source.family==='rush'&&!['rush','interlude'].includes(previous?.family))x+=Math.max(0,(previous?.clearance||3)-3);
+  // Continue the tunnel's normal three-pixel pipe gap across section edges.
+  // The full shaft footprint below still reserves room for angled/moving posts.
+  const clearance=['rush','interlude'].includes(source.family)?source.clearance:3;
   const layout=source.layout?source.layout(random):source.pairs;
   const amplitude=Math.max(...layout.flatMap(p=>[p.motion?.amplitude||0,p.topMotion?.amplitude||0,p.bottomMotion?.amplitude||0]));
   const nominalCenter=(source.anchor??168)+(ground-336)/2;
@@ -279,7 +286,7 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
     const dx=pair.dx+(source.entryInset||0);
     const ownLayoutOffset=pair.anchorEntry===false?0:layoutOffset;
     const pipe={x:x+dx,chunkOffset:dx,width,gap:pair.bottom[1]-pair.top[1],level:3,kind:source.id,chunkId:id,scored:false,
-      topRecord:[...pair.top],bottomRecord:[...pair.bottom],motion:pair.motion,topMotion:pair.topMotion,bottomMotion:pair.bottomMotion,
+      topRecord:[...pair.top],bottomRecord:[...pair.bottom],motion:pair.motion,topMotion:pair.topMotion,bottomMotion:pair.bottomMotion,passageHeight:pair.passageHeight,
       safetyGroup:pair.safetyGroup||0,minimumShaft:pair.minimumShaft,noTop:pair.noTop||false,roofGroup:pair.roofGroup,alignedRoof:source.alignedRoof||false,risingFloor:pair.risingFloor||false,minimumGap:pair.minimumGap,approachCeiling:pair.approachCeiling,lowDip:pair.lowDip||false,allowRoofOverlap:pair.allowRoofOverlap||false,arrivalClearance:source.motif==='floor-bank',shaftGap:source.diagonal?2:3,verticalOffset:verticalOffset-layoutOffset+ownLayoutOffset,layoutOffset:ownLayoutOffset,referenceBirdX};
     return Object.assign(pipe,pipePose(pipe));
   });
@@ -300,7 +307,7 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
     pipe.chunkOffset=pipe.x-x;
   }
   let endX=Math.max(...pipes.map(p=>p.x+width));
-  const safety=source.guidedEntry?{nodes:[]}:fitPassage({pipes,x,nextX:endX+source.clearance,ground,entryCenter,
+  const safety=source.guidedEntry?{nodes:[]}:fitPassage({pipes,x,nextX:endX+clearance,ground,entryCenter,
     pose:basePose,envelope:basePose,length:pipeShaftLength,height:source.passageHeight});
   // Captured floor banks use their recorded rails. Fit the roof to the actual
   // arrival clearance below instead of widening a static midpoint corridor.
@@ -350,14 +357,14 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
         pipe.referenceBirdX=saved;
       }else safety.nodes.push([pipe.x+pipe.width/2,pipePose(pipe).center]);
     }
-    const exit=safety.nodes.at(-1)[1];safety.nodes.push([endX,exit],[endX+source.clearance,exit]);
+    const exit=safety.nodes.at(-1)[1];safety.nodes.push([endX,exit],[endX+clearance,exit]);
   }
   // Reserve the full visible shaft footprint, at both movement extremes.
   // The next chunk begins after these tails, not merely after the last cap.
   for(const pipe of pipes){
     for(const part of ['top','bottom'])endX=Math.max(endX,postEndX(pipe,ground,part));
   }
-  const nextX=endX+source.clearance;
+  const nextX=endX+clearance;
   const nodes=safety.nodes.slice(0,-2),last=pipes.at(-1);
   const exit=source.exitAtLastGate?pipePose({...last,referenceBirdX:last.x+last.width/2}).center:source.exitCenter===undefined?nodes.at(-1)[1]:source.exitCenter+(ground-336)/2;
   nodes.push([endX,exit],[nextX,exit]);

@@ -82,6 +82,34 @@ function distance(a,b){
   for(const [points,edges] of [[a,b],[b,a]])for(const p of points)for(let i=0;i<edges.length;i++)minimum=Math.min(minimum,pointSegment(p,edges[i],edges[(i+1)%edges.length]));
   return minimum;
 }
+export function checkChunkContinuity(){
+  const fixtures=[['rising-trio','long-low-tunnel'],['short-low-tunnel','long-dropping-tunnel'],
+    ['tunnel-plunger','stationary-tunnel'],['long-low-tunnel','rising-trio'],['stationary-tunnel','rising-trio']];
+  for(const kinds of fixtures)for(const profile of [.1,.5,.9]){
+    const scene=sequence(kinds,336,168,()=>profile),[left,right]=scene.chunks;
+    const join=[left.pipes.at(-1),...right.connectors,right.corePipes[0]];
+    for(let i=1;i<join.length;i++){
+      assert.ok(Math.abs(join[i].x-join[i-1].x-55)<1e-7,
+        kinds.join(' -> ')+': boundary and connecting pipes must retain the ordinary tunnel pitch');
+    }
+    assert.ok(sharedHandoff(left,right,336)>=80-1e-7,'compact joins preserve aligned flight openings');
+    const result=flyPassage(scene,{minFlapInterval:.25,safetyMargin:3});
+    assert.ok(result.ok,kinds.join(' -> ')+': compact transition stays realistically flyable: '+JSON.stringify(result));
+  }
+  // Exercise the production queue as well as the chunk factory. Scrolling
+  // and a live change of framing must not reopen the reported visible seam.
+  for(const width of [240,288,614.4]){
+    const game=new Game({width,random:()=>.5});
+    game.difficulty=3;game.level3Queued=true;game.nextChunkX=300;game.lastExitCenter=168;
+    game.level3Director={next:id=>id?'long-low-tunnel':'rising-trio'};
+    game.appendLevel3Chunk();game.appendLevel3Chunk();
+    const before=game.pipes.filter(p=>p.chunkId===0).at(-1),after=game.pipes.find(p=>p.chunkId===1);
+    assert.ok(Math.abs(after.x-before.x-55)<1e-7,'engine queue preserves the same small pipe gap across chunks');
+    game.resize(width===240?614.4:240,384);
+    assert.ok(Math.abs(after.x-before.x-55)<1e-7,'changing framing does not change the join');
+  }
+  return 'Chunk continuity: ordinary three-pixel gaps extend through tunnel boundaries and height connectors; buffered flights and the live engine queue pass across screen widths.';
+}
 export function checkPassages(){
   const kinds=[LEVEL3_OPENING_ID,...LEVEL3_CHUNK_KINDS];let joins=0;
   for(const left of kinds)for(const right of LEVEL3_CHUNK_KINDS){

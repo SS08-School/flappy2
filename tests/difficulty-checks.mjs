@@ -122,18 +122,17 @@ export function checkDifficulty(){
     }
     assert.ok(bank.pipes[0].bottomMotion.speed>10&&bank.pipes[0].bottomMotion.speed<13,'trio ascent spans the widescreen approach at a steady speed');
     assert.equal(bank.pipes[3].bottomMotion.speed,50);
-    assert.equal(bank.pipes[4].bottomMotion.speed,50,'following pair shares its ascent speed');
+    assert.ok(bank.pipes[4].bottomMotion.speed>50,'right pipe covers its longer ascent faster');
     assert.ok(bank.pipes[3].bottomMotion.speed>bank.pipes[0].bottomMotion.speed,'following pair catches the trio while rising');
     const tail=bank.pipes[4],lead=bank.pipes[3];
     const peak=p=>p.bottomMotion.start+(p.bottomMotion.from-p.bottomMotion.to)/p.bottomMotion.speed;
     const leadPeak=peak(lead),tailPeak=peak(tail),descentAt=tailPeak+.1;
-    assert.ok(tailPeak>leadPeak+.3&&tailPeak<leadPeak+.6,'second floor reverses later, without holding at the peak');
+    assert.ok(Math.abs(tailPeak-leadPeak)<1e-8,'both moving floors reach their peak at the exact same time');
     const tailDown=atTime(tail,descentAt+.1).bottom.y-atTime(tail,descentAt).bottom.y;
     const leadDown=atTime(lead,descentAt+.1).bottom.y-atTime(lead,descentAt).bottom.y;
-    assert.ok(tailDown>leadDown+2,'trailing floor separates by descending faster');
+    assert.ok(tailDown>leadDown+1,'trailing floor separates by descending faster');
     for(const p of [lead,tail])assert.ok(atTime(p,peak(p)+.01).bottom.y>atTime(p,peak(p)).bottom.y,'each pipe descends immediately at its own reversal');
-    const between=(leadPeak+tailPeak)/2;
-    assert.ok(atTime(lead,between+.01).bottom.y>atTime(lead,between).bottom.y&&atTime(tail,between+.01).bottom.y<atTime(tail,between).bottom.y,'one pipe returns while the following pipe is still rising');
+    for(const p of [lead,tail])assert.ok(atTime(p,leadPeak-.01).bottom.y>atTime(p,leadPeak).bottom.y,'both floors are still rising immediately before their shared peak');
     for(const p of bank.pipes.slice(0,5)){
       const motion=p.bottomMotion,duration=Math.abs(motion.to-motion.from)/motion.speed;
       const a=atTime(p,motion.start).bottom.y,b=atTime(p,motion.start+duration).bottom.y;
@@ -187,11 +186,13 @@ export function checkDifficulty(){
       const shifts=bank.map(p=>pipeMotion(p,0,'bottom').y);
       assert.ok(Math.abs(shifts[0]-shifts[1])<1e-8&&Math.abs(shifts[1]-shifts[2])<1e-8,'variation retains the three-pipe group');
     }
-    assert.equal(bank[3].bottomMotion.speed,bank[4].bottomMotion.speed,'following two pipes rise together in every variation');
+    assert.ok(bank[4].bottomMotion.speed>bank[3].bottomMotion.speed,'right floor rises faster over its longer stroke in every variation');
     assert.ok(bank[4].bottomMotion.returnSpeed>bank[3].bottomMotion.returnSpeed,'following pair separates during retraction in every variation');
     const stops=bank.slice(3).map(p=>{const motion=p.bottomMotion;return motion.start+(motion.from-motion.to)/motion.speed+(motion.returnTo-motion.to)/motion.returnSpeed;});
     assert.ok(Math.abs(stops[0]-stops[1])<1e-8,'every profile finishes both returns together');
-    assert.ok(bank[4].bottomMotion.start>bank[3].bottomMotion.start,'every profile staggers the following pipe');
+    assert.equal(bank[4].bottomMotion.start,bank[3].bottomMotion.start,'both floors start their rise together in every profile');
+    const peaks=bank.slice(3).map(p=>p.bottomMotion.start+(p.bottomMotion.from-p.bottomMotion.to)/p.bottomMotion.speed);
+    assert.ok(Math.abs(peaks[0]-peaks[1])<1e-8,'every profile reverses both moving floors simultaneously');
     for(const p of bank.slice(3)){
       const motion=p.bottomMotion,peak=motion.start+(motion.from-motion.to)/motion.speed;
       assert.ok(atTime(p,peak+.001).bottom.y>atTime(p,peak).bottom.y,'every profile reverses each pipe without a hold');
@@ -332,6 +333,8 @@ export function checkDifficulty(){
       }
       return gap;
     };
+    assert.ok(minimum(ordinary)<=160,'ordinary diagonal interior keeps the tightened flight corridor');
+    assert.ok(minimum(high)<=148,'higher diagonal interior keeps its tighter flight corridor');
     assert.ok(minimum(high)<minimum(ordinary)-7,'higher diagonal route is slightly narrower');
   }
   for(const kind of [LEVEL3_OPENING_ID,...LEVEL3_CHUNK_KINDS])for(const pipe of chunkOfKind(kind).pipes){
