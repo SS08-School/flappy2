@@ -46,19 +46,23 @@ export function checkDifficulty(){
   }
   assert.equal(seen.size,8);
   const flat=chunkOfKind('stationary-tunnel');assert.equal(flat.pipes.length,5);
-  assert.equal(flat.pipes.at(-1).x-flat.pipes[0].x+52,260,'short stationary section, not a concatenated tunnel');
+  assert.equal(flat.pipes.at(-1).x-flat.pipes[0].x+52,272,'five columns with small visible gaps, not a concatenated tunnel');
   for(const p of flat.pipes){assert.equal(p.motion,undefined);assert.deepEqual(atTime(p,0),atTime(p,20));}
   const rising=chunkOfKind('rising-trio');assert.equal(rising.pipes.length,3);
-  const initial=rising.pipes.map(p=>atTime(p,0).center),later=rising.pipes.map(p=>atTime(p,1).center);
-  assert.ok(later.every((y,i)=>y<initial[i]),'three gates rise together');
-  assert.ok(later.every(y=>Math.abs(y-later[0])<1e-8));
+  const initial=rising.pipes.map(p=>atTime(p,0)),later=rising.pipes.map(p=>atTime(p,1));
+  assert.ok(later.every((p,i)=>p.bottom.y<initial[i].bottom.y),'floor group rises');
+  assert.ok(later.every((p,i)=>p.top.y===initial[i].top.y),'roof stays still');
   for(const kind of ['diagonal-rise','diagonal-fall']){
-    const bank=chunkOfKind(kind);assert.equal(bank.pipes.length,3);
+    const bank=chunkOfKind(kind);assert.equal(bank.pipes.length,4);
+    const roof=bank.pipes.map(p=>atTime(p,0).top);
     for(const p of bank.pipes){assert.equal(p.top.angle,Math.PI/4);assert.equal(p.bottom.angle,-Math.PI/4);}
     for(let time=0;time<6;time+=.13){
-      const shifts=bank.pipes.map(p=>{atTime(p,time);return pipeMotion(p).y;});
-      assert.ok(shifts.every(y=>Math.abs(y-shifts[0])<1e-8),'a whole bank shares one phase');
+      const shifts=bank.pipes.map((p,i)=>{assert.deepEqual(atTime(p,time).top,roof[i],'diagonal roof never moves');return pipeMotion(p,0,'bottom').y;});
+      assert.ok(Math.abs(shifts[0]-shifts[1])<1e-8&&Math.abs(shifts[2]-shifts[3])<1e-8,'each two-pipe floor group stays synchronized');
     }
+    assert.notEqual(bank.pipes[0].bottomMotion.period,bank.pipes[2].bottomMotion.period,'neighboring groups move at different speeds');
+    atTime(bank.pipes[0],.1);atTime(bank.pipes[2],.1);
+    assert.ok(Math.abs(pipeMotion(bank.pipes[0],0,'bottom').y-pipeMotion(bank.pipes[2],0,'bottom').y)>1,'groups do not move as one oversized opening');
     const p=bank.pipes[0],post=pipePose(p).top;
     assert.ok(finalPipeHits(p,{x:p.x+26+post.x+Math.sin(post.angle)*4,y:post.y-Math.cos(post.angle)*4,radius:12},336));
   }
@@ -69,9 +73,23 @@ export function checkDifficulty(){
   assert.ok(Math.abs(left-4/m.period)<1e-7&&Math.abs(right+4/m.period)<1e-7,'instant reversal, no slowdown');
   for(let t=-2;t<2;t+=.01){assert.ok(Math.abs(atTime(shutter,t).top.y-atTime(shutter,t+m.period).top.y)<1e-7);}
   const rush=chunkOfKind('left-rush-gates'),p=rush.pipes[0];
-  p.referenceBirdX=p.x-261;assert.ok(Math.abs(pipeMotion(p).x)<1e-8,'lunge waits for a readable approach');
-  p.referenceBirdX=p.x-200;assert.ok(pipeMotion(p).x<0);assert.ok(pipeScoreX(p)<p.x+13,'points follow the actual moving gate');
-  p.referenceBirdX=p.x+200;assert.equal(pipeMotion(p).x,-96);
+  p.referenceBirdX=p.x-147;assert.ok(Math.abs(pipeMotion(p).x)<1e-8,'burst waits until close to the bird');
+  p.referenceBirdX=p.x-100;assert.ok(pipeMotion(p).x<0);assert.ok(pipeScoreX(p)<p.x+13,'points follow the actual moving gate');
+  const contacts=[];
+  for(const gate of rush.pipes){
+    const contact=(gate.motion.trigger-12)/(118+gate.motion.speed);contacts.push(contact);
+    assert.ok(contact<.4,'burst reduces the remaining reaction window below 0.4 seconds');
+    for(const width of [288,512,614.4]){
+      const run=new Game({width,height:384}),birdX=run.bird.x;
+      const sample={...gate,x:birdX+146-118*contact,referenceBirdX:birdX};
+      const leading=sample.x+pipePose(sample).top.x;
+      assert.ok(Math.abs(leading-birdX-12)<1e-8,'contact timing follows actual bird position at every aspect ratio');
+      const before=pipePose({...sample,x:sample.x+118*.01}).top.x;
+      const after=pipePose({...sample,x:sample.x-118*.01}).top.x;
+      assert.ok(Math.abs((before-after)/.02-gate.motion.speed)<1e-7,'gate remains accelerated as it reaches the bird');
+    }
+  }
+  assert.ok(contacts[2]<contacts[0],'the last gate has the shortest reaction window');
   let baseline;
   for(const fps of [30,60,144,240]){
     const run=new Game({width:614.4,height:384,random:seeded()});run.start();run.score=5;run.activateFinal();
@@ -83,7 +101,7 @@ export function checkDifficulty(){
   const recorded=resized.pipes[0],old=pipePose(recorded),distance=recorded.x-resized.bird.x;resized.resize(288,623);
   assert.ok(Math.abs(recorded.x-resized.bird.x-distance)<1e-8);
   assert.ok(Math.abs(pipePose(recorded).top.y-old.top.y-(623-384)/2)<1e-8);
-  return 'Final: fixed introduction at 5, eight short distinct sections, synchronized banks, sharp constant-speed reversals, isolated left lunges, accurate scoring and FPS consistency passed.';
+  return 'Final: small pipe gaps, stationary roofs, distinct floor-speed groups, bird-relative late bursts with a faster final gate, accurate scoring and FPS consistency passed.';
 }
 export async function checkFinalClient(){
   const c=await createClient({width:1228.8,height:768});c.controller.prepareRun();c.controller.flap();

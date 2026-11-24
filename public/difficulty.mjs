@@ -10,24 +10,32 @@ export function triangle(time,period,phase=0){
   const unit=((time/period+phase)%1+1)%1;
   return 1-4*Math.abs(unit-.5);
 }
-export function pipeMotion(pipe,xOffset=0){
-  if(!pipe.motion)return {x:0,y:0};
-  const clockX=pipe.motion.type==='rush'?pipe.x:pipe.x-pipe.chunkOffset;
+export function pipeMotion(pipe,xOffset=0,part){
+  const motion=(part&&pipe[part+'Motion'])||pipe.motion;
+  if(!motion)return {x:0,y:0};
+  const clockX=motion.type==='rush'?pipe.x:pipe.x-pipe.chunkOffset;
   const time=(pipe.referenceBirdX-clockX-xOffset-pipe.width/2)/FINAL_PIPE_SPEED;
-  if(pipe.motion.type==='rush')return {x:-clamp((time+(pipe.motion.trigger+pipe.width/2)/FINAL_PIPE_SPEED)*pipe.motion.speed,0,pipe.motion.distance),y:0};
-  return {x:0,y:pipe.motion.amplitude*triangle(time,pipe.motion.period,pipe.motion.phase)};
+  if(motion.type==='rush'){
+    // Start relative to the actual bird, and stay fast until the whole gate
+    // clears it. Do not spend the burst far ahead and coast toward the player.
+    const duration=(motion.trigger+pipe.width+motion.passMargin)/(FINAL_PIPE_SPEED+motion.speed);
+    return {x:-clamp((time+(motion.trigger+pipe.width/2)/FINAL_PIPE_SPEED)*motion.speed,0,motion.speed*duration),y:0};
+  }
+  const y=motion.amplitude*triangle(time,motion.period,motion.phase);
+  const angle=(part==='top'?pipe.topRecord:pipe.bottomRecord)[2];
+  return {x:motion.alongShaft?-Math.tan(angle)*y:0,y};
 }
 export function pipePose(pipe,xOffset=0){
   if(pipe.level!=='final')return {center:pipe.center,angle:0};
-  const shift=pipeMotion(pipe,xOffset);
-  const top={x:pipe.topRecord[0]+shift.x,y:pipe.topRecord[1]+pipe.verticalOffset+shift.y-(pipe.upperRetraction||0),angle:pipe.topRecord[2]};
-  const bottom={x:pipe.bottomRecord[0]+shift.x,y:pipe.bottomRecord[1]+pipe.verticalOffset+shift.y+(pipe.lowerRetraction||0),angle:pipe.bottomRecord[2]};
+  const upper=pipeMotion(pipe,xOffset,'top'),lower=pipeMotion(pipe,xOffset,'bottom');
+  const top={x:pipe.topRecord[0]+upper.x,y:pipe.topRecord[1]+pipe.verticalOffset+upper.y-(pipe.upperRetraction||0),angle:pipe.topRecord[2]};
+  const bottom={x:pipe.bottomRecord[0]+lower.x,y:pipe.bottomRecord[1]+pipe.verticalOffset+lower.y+(pipe.lowerRetraction||0),angle:pipe.bottomRecord[2]};
   return {top,bottom,center:(top.y+bottom.y)/2,angle:0};
 }
 function basePose(pipe){
-  const pose=pipePose(pipe),shift=pipeMotion(pipe);
-  for(const post of [pose.top,pose.bottom]){post.x-=shift.x;post.y-=shift.y;}
-  pose.center-=shift.y;return pose;
+  const pose=pipePose(pipe);
+  for(const part of ['top','bottom']){const shift=pipeMotion(pipe,0,part);pose[part].x-=shift.x;pose[part].y-=shift.y;}
+  pose.center=(pose.top.y+pose.bottom.y)/2;return pose;
 }
 export function pipeShaftLength(pipe,ground){return (ground+400)/Math.SQRT1_2;}
 export function pipeBounds(pipe,ground,xOffset=0){
@@ -56,14 +64,14 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
   const dense=family=>['tunnel','rising','diagonal'].includes(family);
   if(dense(previous?.family))choices=choices.filter(c=>c.family!==previous.family);
   const source=kind===FINAL_OPENING_ID?FINAL_OPENING_CHUNK:kind?CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind):choices[Math.min(choices.length-1,Math.floor(random()*choices.length))];
-  const amplitude=Math.max(...source.pairs.map(p=>p.motion?.amplitude||0));
+  const amplitude=Math.max(...source.pairs.flatMap(p=>[p.motion?.amplitude||0,p.topMotion?.amplitude||0,p.bottomMotion?.amplitude||0]));
   const nominalCenter=168+(ground-336)/2;
   const layoutOffset=clamp(entryCenter??nominalCenter,90+amplitude,ground-90-amplitude)-nominalCenter;
   const verticalOffset=(ground-336)/2-64+layoutOffset;
   const pipes=source.pairs.map(pair=>{
     const dx=pair.dx+(source.entryInset||0);
     const pipe={x:x+dx,chunkOffset:dx,width,gap:pair.bottom[1]-pair.top[1],level:'final',kind:source.id,chunkId:id,scored:false,
-      topRecord:pair.top,bottomRecord:pair.bottom,motion:pair.motion,verticalOffset,layoutOffset,referenceBirdX};
+      topRecord:pair.top,bottomRecord:pair.bottom,motion:pair.motion,topMotion:pair.topMotion,bottomMotion:pair.bottomMotion,verticalOffset,layoutOffset,referenceBirdX};
     return Object.assign(pipe,pipePose(pipe));
   });
   let endX=Math.max(...pipes.map(p=>p.x+width));
@@ -75,10 +83,14 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
   // Reserve the full visible shaft footprint, at both movement extremes.
   // The next chunk begins after these tails, not merely after the last cap.
   for(const pipe of pipes){
-    const base=basePose(pipe),dy=pipe.motion?.amplitude||0;
-    for(const shift of [-dy,dy])for(const [post,up] of [[base.top,true],[base.bottom,false]]){
-      const polygon=clipToGround(postVertices(pipe,{...post,y:post.y+shift},up,pipeShaftLength(pipe,ground)),ground);
-      for(const point of polygon)endX=Math.max(endX,point[0]);
+    const base=basePose(pipe);
+    for(const [part,up] of [['top',true],['bottom',false]]){
+      const post=base[part],motion=pipe[part+'Motion']||pipe.motion,amplitude=motion?.amplitude||0;
+      for(const dy of [-amplitude,amplitude]){
+        const dx=motion?.alongShaft?-Math.tan(post.angle)*dy:0;
+        const polygon=clipToGround(postVertices(pipe,{...post,x:post.x+dx,y:post.y+dy},up,pipeShaftLength(pipe,ground)),ground);
+        for(const point of polygon)endX=Math.max(endX,point[0]);
+      }
     }
   }
   const nextX=endX+source.clearance;
@@ -89,6 +101,13 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
 // Analysis route follows the same shared clock as the moving bank, then blends
 // back to its nominal exit through the empty interlude. It never moves the bird.
 export function flightTarget(chunk,x,clockX=x){
+  const floor=chunk.pipes.find(p=>p.bottomMotion);
+  if(floor){
+    const nearest=chunk.pipes.reduce((best,p)=>Math.abs(p.x+p.width/2-x)<Math.abs(best.x+best.width/2-x)?p:best);
+    const shift=pipeMotion({...nearest,referenceBirdX:clockX},0,'bottom');
+    const blend=clamp((x-(chunk.startX-104))/104,0,1)*clamp((chunk.nextX-x)/(chunk.nextX-chunk.endX),0,1);
+    return pathHeight(chunk.safePath,x)+shift.y*.5*blend;
+  }
   const moving=chunk.pipes.find(p=>p.motion?.type==='triangle');
   if(!moving)return pathHeight(chunk.safePath,x);
   const anchor=moving.x-moving.chunkOffset;

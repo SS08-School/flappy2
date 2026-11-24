@@ -1,6 +1,6 @@
 // Preserve source x positions/orientations; retract only walls that intrude
 // into a continuous, generously sized flight corridor.
-export const PASSAGE = { height:112, slope:.4, birdRadius:12, edgeMargin:76 };
+export const PASSAGE = { height:92, slope:.4, birdRadius:12, edgeMargin:76 };
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export function postVertices(pipe,post,up,length){
   const a=up?-length:0,b=up?0:length,co=Math.cos(post.angle),si=Math.sin(post.angle);

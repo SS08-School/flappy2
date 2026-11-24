@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { PHYSICS } from '../public/engine.mjs';
-import { FINAL_CHUNK_KINDS,FINAL_OPENING_ID,FINAL_PIPE_SPEED,createFinalChunk,finalPipeHits,pipePose,pipeShaftLength,flightTarget } from '../public/difficulty.mjs';
+import { FINAL_CHUNK_KINDS,FINAL_OPENING_ID,FINAL_PIPE_SPEED,createFinalChunk,pipePose,pipeShaftLength,flightTarget } from '../public/difficulty.mjs';
 import { postVertices,clipToGround,slabRange } from '../public/pipe-safety.mjs';
 const seeded=seed=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
 export function sequence(kinds,ground=336,entryCenter=ground/2){
@@ -63,6 +63,16 @@ function overlap(a,b){
   }
   return true;
 }
+function distance(a,b){
+  const pointSegment=(p,u,v)=>{
+    const dx=v[0]-u[0],dy=v[1]-u[1],length=dx*dx+dy*dy;
+    const t=length?Math.max(0,Math.min(1,((p[0]-u[0])*dx+(p[1]-u[1])*dy)/length)):0;
+    return Math.hypot(p[0]-u[0]-t*dx,p[1]-u[1]-t*dy);
+  };
+  let minimum=Infinity;
+  for(const [points,edges] of [[a,b],[b,a]])for(const p of points)for(let i=0;i<edges.length;i++)minimum=Math.min(minimum,pointSegment(p,edges[i],edges[(i+1)%edges.length]));
+  return minimum;
+}
 export function checkPassages(){
   const kinds=[FINAL_OPENING_ID,...FINAL_CHUNK_KINDS];let joins=0;
   for(const left of kinds)for(const right of FINAL_CHUNK_KINDS){
@@ -71,12 +81,22 @@ export function checkPassages(){
       const clock=scene.chunks[0].startX+phase*700;
       scene.pipes.forEach(p=>{p.referenceBirdX=clock;});
       const posts=scene.pipes.flatMap(p=>{const pose=pipePose(p);return [[pose.top,true],[pose.bottom,false]].map(([post,up])=>({kind:p.kind,polygon:clipToGround(postVertices(p,post,up,pipeShaftLength(p,336)),336)}));});
-      for(let i=0;i<posts.length;i++)for(let j=i+1;j<posts.length;j++)assert.ok(!overlap(posts[i].polygon,posts[j].polygon),left+' -> '+right+': overlapping pipe shafts');
+      for(let i=0;i<posts.length;i++)for(let j=i+1;j<posts.length;j++){
+        assert.ok(!overlap(posts[i].polygon,posts[j].polygon),left+' -> '+right+': overlapping pipe shafts');
+        assert.ok(distance(posts[i].polygon,posts[j].polygon)>=2.9,left+' -> '+right+': pipes touch instead of leaving the small gap');
+      }
     }
     for(let x=scene.chunks[0].startX-20;x<scene.chunks.at(-1).endX+20;x+=6){
       scene.pipes.forEach(p=>{p.referenceBirdX=x;});
-      const target=targetAt(scene.chunks,x);
-      for(const dy of [-24,0,24])assert.ok(scene.pipes.every(p=>!finalPipeHits(p,{x,y:target+dy,radius:12},336)),left+' -> '+right+': blocked flight route at '+x+', offset '+dy);
+      let ceiling=12,floor=324;
+      for(const p of scene.pipes){
+        const pose=pipePose(p);
+        for(const [post,up] of [[pose.top,true],[pose.bottom,false]]){
+          const range=slabRange(postVertices(p,post,up,pipeShaftLength(p,336)),x-12,x+12);
+          if(range){if(up)ceiling=Math.max(ceiling,range[1]+12);else floor=Math.min(floor,range[0]-12);}
+        }
+      }
+      assert.ok(floor-ceiling>=32,left+' -> '+right+': insufficient bird-sized clearance at '+x);
     }
     const result=flyPassage(scene);assert.ok(result.ok,left+' -> '+right+' is not flyable: '+JSON.stringify(result));
     joins++;
@@ -92,5 +112,5 @@ export function checkPassages(){
     const result=flyPassage(sequence([FINAL_OPENING_ID,'rising-trio','reversing-gates'],336,entry));
     assert.ok(result.ok,'classic-to-final entry '+entry+': '+JSON.stringify(result));
   }
-  return 'Passages: '+joins+' ordered joins have no overlapping solid pipes and remain flyable; moving sections and seeded long runs pass with original gravity/flaps.';
+  return 'Passages: '+joins+' ordered joins keep small gaps between pipes and remain flyable; independent floor groups, late bursts and seeded long runs pass with original gravity/flaps.';
 }
