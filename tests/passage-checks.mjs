@@ -10,6 +10,8 @@ export function sequence(kinds,ground=336,entryCenter=ground/2,random=seeded(17)
   return {chunks,pipes,ground,entryCenter};
 }
 function targetAt(chunks,x,clockX=x){
+  const guided=chunks.find(c=>c.guidedEntry&&x>=c.safePath[0][0]&&x<c.startX);
+  if(guided)return flightTarget(guided,x,clockX);
   return flightTarget(chunks.find(c=>x<c.endX+20)||chunks.at(-1),x,clockX);
 }
 // Search actual flap/no-flap inputs at 50 ms decision intervals. Every arc is
@@ -124,12 +126,22 @@ export function checkPassages(){
     const result=flyPassage(sequence(['tunnel-plunger','stationary-tunnel'],ground,entry),{minFlapInterval:.25});
     assert.ok(result.ok,'elevator tunnel with at least 250 ms between presses, ground '+ground+', entry '+entry+': '+JSON.stringify(result));
   }
+  for(const kind of ['diagonal-rise','diagonal-fall','displaced-roof-bank'])for(const profile of [.1,.5,.9])for(const ground of [336,575]){
+    const scene=sequence(['stationary-tunnel',kind,'short-low-tunnel'],ground,ground/2,()=>profile);
+    const result=flyPassage(scene);
+    assert.ok(result.ok,'floor-group variation '+profile+', '+kind+', ground '+ground+': '+JSON.stringify(result));
+  }
   // Exercise every combination of horizontal velocity/height profiles, plus
   // the diagonal cap-length jitter, rather than repeatedly using one layout.
   for(let h=0;h<4;h++)for(let speed=0;speed<3;speed++){
     const values=[(h+.5)/4,(speed+.5)/3],random=()=>values.length?values.shift():.5;
     const result=flyPassage(sequence(['rising-trio-window','left-rush-gates','stationary-diagonal-tunnel','long-dropping-tunnel'],336,168,random));
     assert.ok(result.ok,'rush height '+h+', speed '+speed+': '+JSON.stringify(result));
+  }
+  for(let h=0;h<4;h++)for(let speed=0;speed<3;speed++)for(const count of [.1,.9])for(const exit of [.1,.9]){
+    const values=[(h+.5)/4,(speed+.5)/3,count,exit],random=()=>values.length?values.shift():.5;
+    const result=flyPassage(sequence(['stationary-tunnel','short-left-rush-gates','tunnel-plunger'],336,168,random));
+    assert.ok(result.ok,'short rush height '+h+', speed '+speed+', count '+count+', exit '+exit+': '+JSON.stringify(result));
   }
   return 'Passages: '+joins+' director-eligible joins keep usable clearances; only designated upper exits overlap one roof pipe. Long sections, every rush profile and seeded portrait/landscape flights pass with original gravity/flaps.';
 }

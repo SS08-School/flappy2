@@ -49,11 +49,15 @@ export function checkDifficulty(){
     previousKind=chunk.kind;previousFamily=chunk.family;
   }
   assert.equal(seen.size,CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare).length);
-  const director=new FinalDirector(seeded()),rapid=[],long=[],history=[],descents=[];
+  const director=new FinalDirector(seeded()),rapid=[],long=[],history=[],descents=[],rushes=[];
   for(let id=0;id<120;id++){
     const kind=director.next(id);
     assert.ok(!history.slice(-5).includes(kind),'no formation repeats within five chunks');history.push(kind);
-    if(id<5)assert.notEqual(kind,'left-rush-gates','only horizontal rushes are excluded from the first five');
+    if(CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind)?.family==='rush'){
+      assert.ok(id>=5,'both rush lengths are excluded from the opening five chunks');
+      if(rushes.length)assert.ok(id-rushes.at(-1)>=6,'five complete chunks separate any two rush sections');
+      rushes.push(id);
+    }
     if(id===0)assert.equal(kind,FINAL_OPENING_ID);
     if(kind==='descending-pursuit'){
       assert.ok(id>=5,'fast descent cannot appear in the first five chunks');
@@ -81,7 +85,7 @@ export function checkDifficulty(){
   assert.ok(pipePose(rising.pipes[5]).center>later[0].center+60,'rising group leads directly through uneven pipes into a lower opening');
   assert.ok(new Set(rising.pipes.slice(3).map(p=>p.top.y)).size===3,'three uneven fixed exits follow the rising trio');
   for(const kind of ['diagonal-rise','diagonal-fall']){
-    const chunk=chunkOfKind(kind),bank={pipes:chunk.pipes.slice(0,5)};
+    const chunk=chunkOfKind(kind,{random:()=>.5}),bank={pipes:chunk.pipes.slice(0,5)};
     assert.equal(bank.pipes.length,5,'roof formation has a trio and a following pair');
     const roof=bank.pipes.map(p=>atTime(p,0).top);
     assert.ok(new Set(roof.map(p=>p.y)).size>=3,'fixed roof has staggered cap lengths');
@@ -119,6 +123,20 @@ export function checkDifficulty(){
     const p=bank.pipes[0],post=pipePose(p).top;
     assert.ok(finalPipeHits(p,{x:p.x+26+post.x+Math.sin(post.angle)*4,y:post.y-Math.cos(post.angle)*4,radius:12},336));
   }
+  const profiles=new Set();
+  for(const value of [.1,.5,.9]){
+    const chunk=chunkOfKind('diagonal-rise',{random:()=>value}),bank=chunk.pipes.slice(0,5);
+    profiles.add(bank.map(p=>[p.bottomMotion.speed,p.bottomMotion.start,p.bottomMotion.returnSpeed].join(':')).join('|'));
+    const tops=bank.map(p=>atTime(p,0).top);
+    for(let t=-3;t<6;t+=.07){
+      bank.forEach((p,i)=>assert.deepEqual(atTime(p,t).top,tops[i],'roof stays fixed in every floor-group variation'));
+      const shifts=bank.map(p=>pipeMotion(p,0,'bottom').y);
+      assert.ok(Math.abs(shifts[0]-shifts[1])<1e-8&&Math.abs(shifts[1]-shifts[2])<1e-8,'variation retains the three-pipe group');
+    }
+    assert.equal(bank[3].bottomMotion.speed,bank[4].bottomMotion.speed,'following two pipes rise together in every variation');
+    assert.ok(bank[4].bottomMotion.returnSpeed>bank[3].bottomMotion.returnSpeed,'following pair separates during retraction in every variation');
+  }
+  assert.equal(profiles.size,3,'floor groups have three distinct bounded movement profiles');
   const connected=chunkOfKind('diagonal-fall');assert.ok(connected.pipes.at(-1).motion,'diagonal passage leads directly into a moving gate');
   const rush=chunkOfKind('left-rush-gates',{random:()=>.25}),p=rush.pipes[0];
   p.referenceBirdX=p.x-400;assert.ok(pipeMotion(p).x<0,'extra movement is already active on approach');
@@ -185,8 +203,27 @@ export function checkDifficulty(){
       }
     }
   }
-  assert.equal(sizes.size,3,'left-moving sections vary between three and five moving pairs');
+  assert.equal(sizes.size,2,'full left-moving sections vary between four and five moving pairs');
   assert.equal(exits.size,2,'rising-floor gate is optional in left-moving sections');
+  const shortSizes=new Set();
+  for(let seed=1;seed<=60;seed++){
+    const short=chunkOfKind('short-left-rush-gates',{random:seeded(seed*183)}),gates=short.pipes.filter(p=>p.motion?.type==='rush');
+    shortSizes.add(gates.length);
+    assert.ok(gates.every(p=>!p.motion.hold),'short rush sections omit the repeated follower sequence');
+    for(let time=-5;time<14;time+=.037){
+      gates.forEach(p=>{p.referenceBirdX=short.startX+26+time*118;});
+      for(let i=1;i<gates.length;i++)assert.ok(gates[i].x+pipeMotion(gates[i]).x-gates[i-1].x-pipeMotion(gates[i-1]).x-52>=3-1e-7,'short rush velocities preserve separation');
+    }
+  }
+  assert.deepEqual([...shortSizes].sort(),[2,3],'short rush sections have two or three gates');
+  for(const kind of ['short-high-tunnel','left-rush-gates','short-left-rush-gates']){
+    const chunk=chunkOfKind(kind,{random:()=>.1}),rising=chunk.pipes.find(p=>p.minimumGap===88);
+    assert.ok(rising,'rising floor is available after each section length');
+    const crossing=rising.chunkOffset/118,pose=atTime(rising,crossing);
+    assert.ok(Math.abs(pose.bottom.y-pose.top.y-100)<1e-7,'rising opening is 100 pixels at the actual crossing');
+    assert.ok(Math.abs(atTime(rising,crossing+.5).bottom.y-atTime(rising,crossing+.5).top.y-88)<1e-7,'rising opening tightens to 88 pixels as the bird exits');
+    assert.equal(rising.bottomRecord[1]-64,264,'only the lower post starts 20 pixels higher');
+  }
   for(const kind of ['short-high-tunnel','short-low-tunnel']){
     assert.ok(chunkOfKind(kind,{random:()=>.1}).pipes.at(-1).bottomMotion,'ordinary tunnel can end with a rising-floor gate');
     assert.ok(!chunkOfKind(kind,{random:()=>.9}).pipes.at(-1).bottomMotion,'ordinary tunnel can also omit the rising-floor gate');
@@ -216,7 +253,7 @@ export function checkDifficulty(){
     }
   }
   const plunger=chunkOfKind('tunnel-plunger'),trap=plunger.pipes.find(p=>p.motion?.type==='plunger');
-  assert.equal(plunger.pipes.length,6);assert.equal(plunger.pipes.filter(p=>p.motion).length,1,'one elevator gate is enclosed in a short fixed tunnel');
+  assert.equal(plunger.pipes.length,7);assert.equal(plunger.pipes.filter(p=>p.motion).length,1,'one elevator gate is enclosed in a short fixed tunnel');
   const fast=trap.motion,after=fast.slowAt+.05;
   const speedAt=t=>Math.abs(atTime(trap,t+.001).center-atTime(trap,t).center)/.001;
   assert.ok(Math.abs(speedAt(fast.start+.1)-210)<1e-6,'elevator restores the previous 210 px/s speed');
@@ -227,8 +264,16 @@ export function checkDifficulty(){
   assert.ok(exit-entrance>100,'bird follows the elevator gap down through a meaningful distance');
   for(let t=enter;t<leave;t+=.01)assert.ok(atTime(trap,t+.001).center>atTime(trap,t).center,'gap never reverses upward while the bird is inside it');
   assert.ok(pipePose(plunger.pipes[0]).center-pipePose(plunger.pipes[2]).center>60,'fixed tunnel entrance requires climbing first');
-  assert.ok(Math.abs(pipePose(plunger.pipes[4]).center-exit)<20,'descending opening joins directly to the lower exit tunnel');
-  assert.ok(plunger.pipes.slice(1).every((p,i)=>p.x-plunger.pipes[i].x===55),'tight tunnel spacing surrounds the moving opening');
+  assert.ok(Math.abs(pipePose(plunger.pipes[5]).center-exit)<20,'descending opening joins directly to the lower exit tunnel');
+  const spacings=plunger.pipes.slice(1).map((p,i)=>p.x-plunger.pipes[i].x);
+  assert.deepEqual(spacings,[84,72,55,55,55,55],'spread entry becomes a tight guide tunnel around the elevator');
+  const authored=chunkOfKind('tunnel-plunger',{entryCenter:200});
+  assert.deepEqual(authored.pipes.slice(0,4).map(p=>pipePose(p).bottom.y-pipePose(p).top.y),[120,112,104,100],'lead-in openings narrow without being widened by neutral-pose fitting');
+  for(const ground of [336,575,960])for(const entryCenter of [100,ground/2,ground-100]){
+    const guided=chunkOfKind('tunnel-plunger',{ground,entryCenter}),moving=guided.pipes[4],guide=pipePose(guided.pipes[3]);
+    const entry=atTime(moving,(moving.chunkOffset-38)/118);
+    assert.ok(guide.top.y>=entry.top.y+2-1e-7&&guide.bottom.y<=entry.bottom.y-2+1e-7,'entire final guide opening fits inside the elevator entry with spare clearance');
+  }
   assert.ok(Math.abs(atTime(trap,fast.slowAt+.000001).center-atTime(trap,fast.slowAt-.000001).center)<.001,'speed change preserves position continuity');
   let baseline;
   for(const fps of [30,60,144,240]){
@@ -269,7 +314,7 @@ export function checkFloorVisibility(){
     const corners=[[-26,0],[26,0],[26,26],[-26,26]].map(([x,y])=>post.y+x*si+y*co);
     const remaining=ground-Math.max(...corners),shaft=pipe.lowDip?2:24;
     assert.ok(remaining>=shaft*co-1e-7,pipe.kind+': lower cap or minimum shaft is submerged');
-    if(post.angle===0&&pose.top.angle===0)assert.ok(post.y-pose.top.y>=100-1e-7,'raised floors retain at least the original gate opening');
+    if(post.angle===0&&pose.top.angle===0)assert.ok(post.y-pose.top.y>=(pipe.minimumGap??100)-1e-7,'raised floors retain their prescribed opening');
     const upper=pose.top,roofCorners=[[-26,-26],[26,-26],[26,0],[-26,0]].map(([x,y])=>upper.y+x*Math.sin(upper.angle)+y*Math.cos(upper.angle));
     assert.ok(Math.min(...roofCorners)>=12-1e-7,pipe.kind+': entire upper cap stays clear of the ceiling');
   };

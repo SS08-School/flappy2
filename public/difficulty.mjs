@@ -8,7 +8,7 @@ export const PIPE_EXPOSURE={cap:26,ordinaryShaft:24,rapidShaft:2,ceilingMargin:1
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 export class FinalDirector {
   constructor(random=Math.random){
-    this.random=random;this.nextLong=5+Math.floor(random()*3);this.recent=[];this.lastDescent=-Infinity;this.lastPlunger=-Infinity;
+    this.random=random;this.nextLong=5+Math.floor(random()*3);this.recent=[];this.lastDescent=-Infinity;this.lastPlunger=-Infinity;this.lastRush=-Infinity;
   }
   next(id){
     let kind;
@@ -17,7 +17,7 @@ export class FinalDirector {
       this.nextLong=id+10+Math.floor(this.random()*5);kind=this.random()<.5?'long-dropping-tunnel':'long-low-tunnel';
     }else{
       const last=CAPTURED_FINAL_CHUNKS.find(c=>c.id===this.recent.at(-1));
-      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(id>=5||!['rush','plunger'].includes(c.family))&&(c.id!=='descending-pursuit'||id>=5&&id-this.lastDescent>=8)&&(c.id!=='tunnel-plunger'||id-this.lastPlunger>=8));
+      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(id>=5||!['rush','plunger'].includes(c.family))&&(c.family!=='rush'||id-this.lastRush>=6)&&(c.id!=='descending-pursuit'||id>=5&&id-this.lastDescent>=8)&&(c.id!=='tunnel-plunger'||id-this.lastPlunger>=8));
       const varied=pool.filter(c=>c.family!==last?.family);if(varied.length)pool=varied;
       const motifs=this.recent.map(k=>CAPTURED_FINAL_CHUNKS.find(c=>c.id===k)?.motif);
       const different=pool.filter(c=>!c.motif||!motifs.includes(c.motif));if(different.length)pool=different;
@@ -25,6 +25,7 @@ export class FinalDirector {
     }
     if(kind==='descending-pursuit')this.lastDescent=id;
     if(kind==='tunnel-plunger')this.lastPlunger=id;
+    if(CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind)?.family==='rush')this.lastRush=id;
     this.recent.push(kind);if(this.recent.length>5)this.recent.shift();
     return kind;
   }
@@ -135,7 +136,8 @@ export function fitFloorVisibility(pipes,ground){
     // the original game's 100-pixel opening. Lift its roof only if needed.
     const independent=pipe.bottomMotion||pipe.topMotion;
     const bottom=independent?motionRange(pipe.bottomMotion||pipe.motion)[0]:0,top=independent?motionRange(pipe.topMotion||pipe.motion)[1]:0;
-    pipe.capRoofLift=Math.max(0,100-(pose.bottom.y+bottom-pose.top.y-top));
+    pipe.capRoofLift=Math.max(0,(pipe.minimumGap??100)-(pose.bottom.y+bottom-pose.top.y-top),
+      pipe.approachCeiling===undefined?0:pose.top.y-pipe.approachCeiling-(ground-336)/2);
   }
   for(const id of new Set(pipes.filter(p=>p.arrivalClearance).map(p=>p.chunkId))){
     const bank=pipes.filter(p=>p.chunkId===id),saved=bank.map(p=>p.referenceBirdX);let lift=0;
@@ -211,7 +213,7 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
     const ownLayoutOffset=pair.anchorEntry===false?0:layoutOffset;
     const pipe={x:x+dx,chunkOffset:dx,width,gap:pair.bottom[1]-pair.top[1],level:'final',kind:source.id,chunkId:id,scored:false,
       topRecord:[...pair.top],bottomRecord:[...pair.bottom],motion:pair.motion,topMotion:pair.topMotion,bottomMotion:pair.bottomMotion,
-      safetyGroup:pair.safetyGroup||0,lowDip:pair.lowDip||false,allowRoofOverlap:pair.allowRoofOverlap||false,arrivalClearance:source.motif==='floor-bank',shaftGap:source.diagonal?2:3,verticalOffset:verticalOffset-layoutOffset+ownLayoutOffset,layoutOffset:ownLayoutOffset,referenceBirdX};
+      safetyGroup:pair.safetyGroup||0,minimumGap:pair.minimumGap,approachCeiling:pair.approachCeiling,lowDip:pair.lowDip||false,allowRoofOverlap:pair.allowRoofOverlap||false,arrivalClearance:source.motif==='floor-bank',shaftGap:source.diagonal?2:3,verticalOffset:verticalOffset-layoutOffset+ownLayoutOffset,layoutOffset:ownLayoutOffset,referenceBirdX};
     return Object.assign(pipe,pipePose(pipe));
   });
   for(let i=0;i<pipes.length;i++)if(pipes[i].motion?.type==='rush'){
@@ -231,11 +233,12 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
     pipe.chunkOffset=pipe.x-x;
   }
   let endX=Math.max(...pipes.map(p=>p.x+width));
-  const safety=fitPassage({pipes,x,nextX:endX+source.clearance,ground,entryCenter,
+  const safety=source.guidedEntry?{nodes:[]}:fitPassage({pipes,x,nextX:endX+source.clearance,ground,entryCenter,
     pose:basePose,envelope:basePose,length:pipeShaftLength,height:source.passageHeight});
   // Captured floor banks use their recorded rails. Fit the roof to the actual
   // arrival clearance below instead of widening a static midpoint corridor.
   if(source.motif==='floor-bank')for(const pipe of pipes){pipe.upperRetraction=0;pipe.lowerRetraction=0;}
+  for(const pipe of pipes)if(pipe.minimumGap===88||pipe.motion?.hold){pipe.upperRetraction=0;pipe.lowerRetraction=0;}
   // Preserve clean parallel edges: retract the entire roof/floor as a bank.
   for(const group of new Set(pipes.map(p=>p.safetyGroup))){
     const bank=pipes.filter(p=>p.safetyGroup===group);
@@ -243,6 +246,35 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
     for(const pipe of bank){pipe.upperRetraction=upper;pipe.lowerRetraction=lower;}
   }
   fitFloorVisibility(pipes,ground);
+  const guidedRisingExit=pipes.some(p=>p.minimumGap===88&&p.bottomMotion);
+  if(guidedRisingExit)for(const pipe of pipes){
+    const node=safety.nodes.find(n=>Math.abs(n[0]-pipe.x-pipe.width/2)<1e-7);
+    if(!node)continue;
+    if(pipe.approachCeiling!==undefined)node[1]=Math.min(node[1],pipePose(pipe).top.y+40);
+    if(pipe.minimumGap===88)node[1]=pipePose({...pipe,referenceBirdX:pipe.x+pipe.width/2}).center;
+  }
+  if(source.guidedEntry){
+    // The static lead-in points to the actual arrival opening. Its tight gaps
+    // are authored with the moving trajectory, rather than widened around a
+    // neutral pose the bird never encounters. These nodes guide analysis only.
+    for(let i=0;i<2;i++){
+      const pipe=pipes[i],post=pipePose(pipe).top;
+      const ceiling=Math.max(PIPE_EXPOSURE.ceilingMargin+PIPE_EXPOSURE.cap,(entryCenter??ground/2)-(i?20:40));
+      pipe.approachCeiling=ceiling-(ground-336)/2;
+      pipe.capRoofLift+=Math.max(0,post.y-ceiling);
+    }
+    safety.nodes.push([x-140,entryCenter??ground/2]);
+    for(const pipe of pipes){
+      if(pipe.motion?.type==='plunger'){
+        const saved=pipe.referenceBirdX;
+        for(const at of [pipe.x-12,pipe.x+13,pipe.x+39,pipe.x+pipe.width+12]){
+          pipe.referenceBirdX=at;safety.nodes.push([at,pipePose(pipe).center]);
+        }
+        pipe.referenceBirdX=saved;
+      }else safety.nodes.push([pipe.x+pipe.width/2,pipePose(pipe).center]);
+    }
+    const exit=safety.nodes.at(-1)[1];safety.nodes.push([endX,exit],[endX+source.clearance,exit]);
+  }
   // Reserve the full visible shaft footprint, at both movement extremes.
   // The next chunk begins after these tails, not merely after the last cap.
   for(const pipe of pipes){
@@ -253,11 +285,12 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
   const exit=source.exitAtLastGate?pipePose({...last,referenceBirdX:last.x+last.width/2}).center:source.exitCenter===undefined?nodes.at(-1)[1]:source.exitCenter+(ground-336)/2;
   nodes.push([endX,exit],[nextX,exit]);
   for(const pipe of pipes)Object.assign(pipe,pipePose(pipe));
-  return {kind:source.id,family:source.family,pipes,layout,nextX,endX,startX:x,exitCenter:exit,safePath:nodes,source:source.source};
+  return {kind:source.id,family:source.family,guidedEntry:source.guidedEntry||false,guidedRisingExit,pipes,layout,nextX,endX,startX:x,exitCenter:exit,safePath:nodes,source:source.source};
 }
 // Analysis route follows the same shared clock as the moving bank, then blends
 // back to its nominal exit through the empty interlude. It never moves the bird.
 export function flightTarget(chunk,x,clockX=x){
+  if(chunk.guidedEntry||chunk.guidedRisingExit)return pathHeight(chunk.safePath,x);
   const floor=chunk.pipes.find(p=>p.bottomMotion);
   if(floor){
     const nearest=chunk.pipes.reduce((best,p)=>Math.abs(p.x+p.width/2-x)<Math.abs(best.x+best.width/2-x)?p:best);
