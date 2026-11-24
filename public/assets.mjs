@@ -89,12 +89,21 @@ export function drawPipe(ctx, x, y, width, height, up = false, alpha = 1) {
     ctx.drawImage(atlas, s.x, up ? s.y + s.height - sourceHeight : s.y, s.width, sourceHeight,
       x, y, width, height);
   } else {
-    // Extend only the uniform shaft, preserving the native cap and pipe width.
-    const extension = height - naturalHeight;
-    ctx.drawImage(atlas, s.x, up ? s.y : s.y + 30, s.width, 1,
-      x, up ? y : y + naturalHeight, width, extension);
-    ctx.drawImage(atlas, s.x, s.y, s.width, s.height,
-      x, up ? y + extension : y, width, naturalHeight);
+    // Reflect full shaft strips at matching end rows. This retains the atlas's
+    // shading/dither instead of joining it to a stretched, differently shaded row.
+    const cap = 26, body = s.height-cap, shaftY=up?s.y:s.y+cap;
+    ctx.drawImage(atlas,s.x,up?s.y+body:s.y,s.width,cap,x,up?y+height-cap*scale:y,width,cap*scale);
+    let remaining=height-cap*scale,edge=up?y+remaining:y+cap*scale,tile=0;
+    while(remaining>1e-8){
+      const length=Math.min(body*scale,remaining),sourceLength=length/scale,flip=tile%2===1;
+      const sourceY=shaftY+((up&&!flip)||(!up&&flip)?body-sourceLength:0);
+      const destY=up?edge-length:edge;
+      ctx.save();
+      if(flip){ctx.translate(0,2*destY+length);ctx.scale(1,-1);}
+      // A subpixel overlap covers the shared raster edge when rotated.
+      ctx.drawImage(atlas,s.x,sourceY,s.width,sourceLength,x,destY,width,length+.35*scale);
+      ctx.restore();edge+=up?-length:length;remaining-=length;tile++;
+    }
   }
   ctx.restore();
 }

@@ -9,6 +9,13 @@ const vertical=(id,source,centers,gap,spacing=pitch,motion)=>({
   pairs:centers.map((y,i)=>pair(i*spacing,y-gap/2,y+gap/2,{motion})),
 });
 const rail=(from,to,speed,start=0,extra={})=>({type:'rail',from,to,speed,start,...extra});
+const risingExit=(dx,tunnel=false)=>pair(dx,40,284,{safetyGroup:20,anchorEntry:false,bottomMotion:rail(0,-144,24,tunnel?(dx+26-140)/118:(dx+160-RUSH_APPROACH-26)/118)});
+function optionalExit(chunk){
+  const fixed=chunk.pairs;
+  chunk.layout=random=>random()<.4?[...fixed,risingExit(fixed.at(-1).dx+pitch,true)]:fixed;
+  chunk.exitAtLastGate=true;
+  return chunk;
+}
 function rising(id,window=false){
   const chunk=vertical(id,[15,18],[168,168,168],124,pitch,rail(32,-64,42,-1.5));
   chunk.family='rising';chunk.motif='rising';chunk.minEntry=156;
@@ -17,9 +24,8 @@ function rising(id,window=false){
   return chunk;
 }
 function bank(id,{continuation=false}={}){
-  // Retain the distinct rates/directions through 18–22 s. These rails keep
-  // moving before and after the captured crossing: the first rises ~26 px/s
-  // and the following bank descends ~72 px/s, dwelling ahead of the bird.
+  // 18–22 s: low preview, shared ascent, then a complete retraction. The
+  // following two posts rise together and separate on their faster descent.
   const roofV=[98,-60,-112,-108,-160],floorV=[223,223,223,292,292];
   const chunk={id,source:[18,23],family:'diagonal',motif:'floor-bank',diagonal:true,anchor:168,minEntry:168,maxEntry:168,exitCenter:196,entryInset:64,clearance:3,
     pairs:floorV.map((v,i)=>{
@@ -27,7 +33,8 @@ function bank(id,{continuation=false}={}){
       const tx=(tu-roofV[i])*Math.SQRT1_2-3,ty=(tu+roofV[i])*Math.SQRT1_2-64;
       const bx=(bu+v)*Math.SQRT1_2-3,by=(v-bu)*Math.SQRT1_2-64,dx=Math.min(tx,bx)-26;
       return {dx,top:[tx-dx-26,ty+64,Math.PI/4],bottom:[bx-dx-26,by+64,-Math.PI/4],
-        bottomMotion:group?rail(-35,125,i===4?104:72,i===4?1.2:1.06,{returnSpeed:50,alongShaft:true,group}):rail(45,-20,26,-.67,{alongShaft:true,group}),
+        bottomMotion:group?{type:'bank',from:125,to:-35,speed:50,start:-2.14,returnSpeed:i===4?104:72,alongShaft:true,group}
+          :{type:'bank',from:45,to:-20,speed:26,start:-.67,returnSpeed:26,alongShaft:true,group},
       };
     }),
   };
@@ -43,10 +50,8 @@ function diagonalTunnel(drop=false){
     const tu=125+i*54,bu=-97+i*54;
     const tx=(tu-tv)*Math.SQRT1_2-78.4888527117,ty=(tu+tv)*Math.SQRT1_2-64;
     const bx=(bu+bv)*Math.SQRT1_2-78.4888527117,by=(bv-bu)*Math.SQRT1_2-64,dx=Math.min(tx,bx);
-    // One ceiling post closes the opening slowly; the remaining tunnel is rigid.
-    const motion=i===4?rail(-12,12,6,-.8,{alongShaft:true,group:i}):undefined;
     const extension=i===5?92:0;
-    return {dx,top:[tx-dx,ty+64,Math.PI/4],bottom:[bx-dx-extension,by+64-extension,-Math.PI/4],topMotion:motion};
+    return {dx,top:[tx-dx,ty+64,Math.PI/4],bottom:[bx-dx-extension,by+64-extension,-Math.PI/4]};
   });
     const floor=drop?270:278;
     pairs.push(pair(550,178,floor,{top:[0,242,-Math.PI/4],bottom:[0,floor+64,Math.PI/4],allowRoofOverlap:true,overlayAfter:true,joinFloor:true,anchorEntry:false,safetyGroup:10}));
@@ -58,13 +63,14 @@ function rushGates(){
   const layout=random=>{
     const heights=[[168,142,204],[188,130,214],[146,204,158],[198,154,112]][Math.min(3,Math.floor(random()*4))];
     const speeds=[[24,76,32],[36,40,88],[28,64,76]][Math.min(2,Math.floor(random()*3))];
-    const xs=[0,188,376,660,860],ys=[...heights,heights[0]-12,104];
-    const pairs=ys.map((y,i)=>pair(xs[i],y-55,y+55,{safetyGroup:i,anchorEntry:false,motion:{type:'rush',speed:i<3?speeds[i]:i===3?40:96,trigger:RUSH_APPROACH,hold:i===4?1.1:0}}));
+    const count=2+Math.min(2,Math.floor(random()*3)),withExit=random()<.5;
+    const ys=[...heights,heights[0]-12].slice(0,count),xs=ys.map((_,i)=>i*188);
+    xs.push(xs.at(-1)+200);ys.push(104);
+    const pairs=ys.map((y,i)=>pair(xs[i],y-55,y+55,{safetyGroup:i,anchorEntry:false,motion:{type:'rush',speed:i===count?96:i===count-1?40:speeds[i],trigger:RUSH_APPROACH,hold:i===count?1.1:0}}));
     // At 62 s the section ends with a fixed roof and a slowly rising floor.
     // The next pair is positioned from the follower's actual crossing/hold,
     // not its original unaccelerated x. This removes the long empty exit.
-    const exit=891;
-    pairs.push(pair(exit,40,284,{safetyGroup:5,bottomMotion:rail(0,-144,24,(exit+160-RUSH_APPROACH-26)/118),anchorEntry:false}));
+    if(withExit)pairs.push(risingExit(xs.at(-1)+31));
     return pairs;
   };
   return {id:'left-rush-gates',source:[52,64],family:'rush',motif:'rush',entryInset:160,exitAtLastGate:true,clearance:24,pairs:layout(()=>.5),layout};
@@ -88,6 +94,13 @@ function descendingPursuit(){
   chunk.pairs.push(pair(250,142,286,{anchorEntry:false,safetyGroup:1}),pair(305,156,286,{anchorEntry:false,safetyGroup:2}));
   return chunk;
 }
+function tunnelPlunger(){
+  const chunk=vertical('tunnel-plunger',[31,35],[204,188,118,164,218],116,78);
+  chunk.family='plunger';chunk.motif='plunger';chunk.minEntry=156;chunk.maxEntry=180;
+  const moving=chunk.pairs[3];moving.lowDip=true;
+  moving.motion={type:'plunger',from:-76,to:76,speed:380,start:1.9,returnSpeed:380,slowAt:(moving.dx+38)/118,afterSpeed:60};
+  return chunk;
+}
 export const FINAL_OPENING_CHUNK=vertical('opening-moving-pair',[6,10],[168,168,168],124,156);
 FINAL_OPENING_CHUNK.family='opening';
 FINAL_OPENING_CHUNK.pairs[0].motion=rail(-50,60,50,-1);
@@ -95,12 +108,13 @@ export const CAPTURED_FINAL_CHUNKS=[
   vertical('stationary-tunnel',[12,14.7],[168,168,168,168,168],108),
   rising('rising-trio'),rising('rising-trio-window',true),
   descendingPursuit(),
+  tunnelPlunger(),
   bank('diagonal-rise'),
   bank('diagonal-fall',{continuation:true}),
   bank('displaced-roof-bank'),
   diagonalTunnel(),diagonalTunnel(true),
-  vertical('short-high-tunnel',[34,36.5],[168,154,144,154],112),
-  vertical('short-low-tunnel',[36.5,39],[168,182,192,182],112),
+  optionalExit(vertical('short-high-tunnel',[34,36.5],[168,154,144,154],112)),
+  optionalExit(vertical('short-low-tunnel',[36.5,39],[168,182,192,182],112)),
   {id:'stepped-roof-tunnel',source:[34,37],family:'tunnel',clearance:24,
     pairs:[[116,236],[98,224],[132,252],[110,260],[154,296]].map(([a,b],i)=>pair(i*pitch,a,b))},
   {id:'floor-valley-tunnel',source:[39,43],family:'tunnel',clearance:24,

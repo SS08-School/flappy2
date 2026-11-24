@@ -91,8 +91,9 @@ export function checkDifficulty(){
       assert.ok(Math.abs(shifts[0]-shifts[1])<1e-8&&Math.abs(shifts[1]-shifts[2])<1e-8,'leading three-pipe floor group stays synchronized');
     }
     assert.equal(bank.pipes[0].bottomMotion.speed,26);
-    assert.equal(bank.pipes[3].bottomMotion.speed,72);
-    assert.ok(bank.pipes[3].bottomMotion.returnSpeed>bank.pipes[0].bottomMotion.speed,'following pair catches the trio while rising');
+    assert.equal(bank.pipes[3].bottomMotion.speed,50);
+    assert.equal(bank.pipes[4].bottomMotion.speed,50,'following pair rises together at the same speed');
+    assert.ok(bank.pipes[3].bottomMotion.speed>bank.pipes[0].bottomMotion.speed,'following pair catches the trio while rising');
     const tail=bank.pipes[4],lead=bank.pipes[3];
     const tailDown=atTime(tail,1.5).bottom.y-atTime(tail,1.4).bottom.y;
     const leadDown=atTime(lead,1.5).bottom.y-atTime(lead,1.4).bottom.y;
@@ -102,8 +103,10 @@ export function checkDifficulty(){
       const a=atTime(p,motion.start).bottom.y,b=atTime(p,motion.start+duration).bottom.y;
       assert.ok(Math.abs((b-a)-(motion.to-motion.from))<1e-7,'ground fitting preserves the complete recorded rail travel');
       assert.equal(p.bottomFittedMotion,undefined,'no faster shortened substitute cycle');
-      assert.notEqual(atTime(p,motion.start-.02).bottom.y,atTime(p,motion.start-.01).bottom.y,'bank already moves before the encounter');
+      assert.equal(atTime(p,motion.start-.02).bottom.y,atTime(p,motion.start-.01).bottom.y,'floor bank starts stationary in its low position');
       assert.notEqual(atTime(p,motion.start+duration+.01).bottom.y,atTime(p,motion.start+duration+.02).bottom.y,'bank reverses without waiting after its first crossing');
+      const returned=motion.start+duration+Math.abs(motion.to-motion.from)/motion.returnSpeed;
+      assert.ok(Math.abs(atTime(p,returned+.1).bottom.y-a)<1e-7,'floor bank retracts all the way back to its short starting position');
     }
     // Scroll-compensated v=(x+y)/sqrt(2), measured in the 30 FPS recording.
     // These samples span the second bank's reversal and long descent.
@@ -117,7 +120,7 @@ export function checkDifficulty(){
     assert.ok(finalPipeHits(p,{x:p.x+26+post.x+Math.sin(post.angle)*4,y:post.y-Math.cos(post.angle)*4,radius:12},336));
   }
   const connected=chunkOfKind('diagonal-fall');assert.ok(connected.pipes.at(-1).motion,'diagonal passage leads directly into a moving gate');
-  const rush=chunkOfKind('left-rush-gates'),p=rush.pipes[0];
+  const rush=chunkOfKind('left-rush-gates',{random:()=>.25}),p=rush.pipes[0];
   p.referenceBirdX=p.x-400;assert.ok(pipeMotion(p).x<0,'extra movement is already active on approach');
   assert.ok(pipeScoreX(p)<p.x+13,'points follow the actual moving gate');
   const contacts=[];
@@ -146,7 +149,7 @@ export function checkDifficulty(){
   assert.ok(new Set(rush.pipes.map(p=>p.bottomRecord[1])).size>=3,'rush openings have different heights');
   for(const gate of rush.pipes.filter(p=>p.motion?.type==='rush'&&!p.motion.hold)){
     const a=pipeMotion({...gate,x:-200,referenceBirdX:188}).x,b=pipeMotion({...gate,x:-200-118*.02,referenceBirdX:188}).x;
-    assert.ok(Math.abs((a-b)/.02-gate.motion.speed)<1e-7,'extra movement continues after leaving the left edge');
+    assert.ok(b<=a,'regular rush gates do not reverse after leaving the left edge');
   }
   for(const gate of rush.pipes.filter(p=>p.motion?.hold)){
     const motion=gate.motion,lead=(motion.trigger+26)/118,start=-motion.speed*lead/(118+motion.speed),positions=[];
@@ -159,7 +162,7 @@ export function checkDifficulty(){
     const a={...gate,x:188-26-118*released,referenceBirdX:188},b={...a,x:a.x-118*.02};
     assert.ok(Math.abs(pipeMotion(a).x-pipeMotion(b).x)<1e-8,'released follower has no second extra leftward burst');
   }
-  const follower=rush.pipes.at(-2),end=rush.pipes.at(-1),motion=follower.motion;
+  const follower=rush.pipes.find(p=>p.motion?.hold),end=rush.pipes.at(-1),motion=follower.motion;
   assert.equal(rush.pipes.filter(p=>p.motion?.hold).length,1,'only one follower per section');
   assert.ok(motion.hold>0&&motion.speed>rush.pipes.at(-3).motion.speed,'the final moving pair approaches faster than the previous pair');
   assert.ok(pipePose(follower).center<=112,'the follower is high and requires flying upward');
@@ -169,14 +172,31 @@ export function checkDifficulty(){
   const roof=atTime(end,exitAt-1).top,bottom=atTime(end,exitAt-1).bottom.y;
   assert.deepEqual(atTime(end,exitAt).top,roof,'final roof remains stationary');
   assert.ok(Math.abs(atTime(end,exitAt).bottom.y-bottom+24)<1e-7,'final floor rises continuously at 24 px/s');
+  const sizes=new Set(),exits=new Set();
+  for(let seed=1;seed<=60;seed++){
+    const varied=chunkOfKind('left-rush-gates',{random:seeded(seed*183)}),gates=varied.pipes.filter(p=>p.motion?.type==='rush');
+    sizes.add(gates.length);exits.add(Boolean(varied.pipes.at(-1).bottomMotion));
+    for(let time=-5;time<14;time+=.037){
+      const clock=varied.startX+26+time*118;
+      gates.forEach(p=>{p.referenceBirdX=clock;});
+      for(let i=1;i<gates.length;i++){
+        const front=gates[i-1],rear=gates[i];
+        assert.ok(rear.x+pipeMotion(rear).x-front.x-pipeMotion(front).x-front.width>=3-1e-7,'different rush speeds never create physical overlaps');
+      }
+    }
+  }
+  assert.equal(sizes.size,3,'left-moving sections vary between three and five moving pairs');
+  assert.equal(exits.size,2,'rising-floor gate is optional in left-moving sections');
+  for(const kind of ['short-high-tunnel','short-low-tunnel']){
+    assert.ok(chunkOfKind(kind,{random:()=>.1}).pipes.at(-1).bottomMotion,'ordinary tunnel can end with a rising-floor gate');
+    assert.ok(!chunkOfKind(kind,{random:()=>.9}).pipes.at(-1).bottomMotion,'ordinary tunnel can also omit the rising-floor gate');
+  }
   const descent=chunkOfKind('descending-pursuit'),moving=descent.pipes.filter(p=>p.motion);
   assert.equal(moving.length,1);assert.equal(moving[0].motion.speed,210);
   assert.ok(atTime(moving[0],1.1).center-atTime(moving[0],.8).center>62,'fast gate pulls the player downward through a long predictable stroke');
   for(const kind of ['stationary-diagonal-tunnel','diagonal-drop-exit']){
-    const tunnel=chunkOfKind(kind),closing=tunnel.pipes.filter(p=>p.topMotion);
-    assert.equal(closing.length,1,'only one ceiling pipe closes the diagonal gap');
-    assert.ok(tunnel.pipes.every(p=>!p.bottomMotion),'diagonal floor remains rigid');
-    assert.ok(atTime(closing[0],.1).top.y>atTime(closing[0],0).top.y,'closing post extends into the opening');
+    const tunnel=chunkOfKind(kind);
+    assert.ok(tunnel.pipes.every(p=>!p.topMotion&&!p.bottomMotion&&!p.motion),'the complete diagonal tunnel is stationary');
     assert.equal(tunnel.pipes.at(-2).bottomRecord[2],-Math.PI/4);
     assert.equal(tunnel.pipes.at(-1).bottomRecord[2],Math.PI/4,'both tunnel variants finish with the opposing ground-dip pipes');
     const incoming=pipePose(tunnel.pipes.at(-2)).bottom,emerging=pipePose(tunnel.pipes.at(-1)).bottom;
@@ -185,7 +205,8 @@ export function checkDifficulty(){
   for(const kind of [FINAL_OPENING_ID,...FINAL_CHUNK_KINDS])for(const pipe of chunkOfKind(kind).pipes){
     for(const part of ['top','bottom']){
       const motion=pipe[part+'Motion']||pipe.motion;if(!motion||motion.type==='rush')continue;
-      assert.equal(motion.type,'rail','vertical movers use continuous rails');
+      assert.ok(['rail','bank','plunger'].includes(motion.type),'vertical motion uses deterministic paths');
+      if(motion.type==='bank')continue;
       for(let t=-4;t<13;t+=.173){
         atTime(pipe,t);const a=pipeMotion(pipe,0,part).y;
         atTime(pipe,t+.001);const b=pipeMotion(pipe,0,part).y;
@@ -194,6 +215,13 @@ export function checkDifficulty(){
       }
     }
   }
+  const plunger=chunkOfKind('tunnel-plunger'),trap=plunger.pipes.find(p=>p.motion?.type==='plunger');
+  assert.equal(plunger.pipes.length,5);assert.equal(plunger.pipes.filter(p=>p.motion).length,1,'one fast gate is enclosed in a short fixed tunnel');
+  const fast=trap.motion,after=fast.slowAt+.05;
+  const speedAt=t=>Math.abs(atTime(trap,t+.001).center-atTime(trap,t).center)/.001;
+  assert.ok(Math.abs(speedAt(1.95)-380)<1e-6,'tunnel gate moves faster than the retained 210 px/s descent');
+  assert.ok(Math.abs(speedAt(after)-60)<1e-6,'tunnel gate slows after the bird clears its trailing edge');
+  assert.ok(Math.abs(atTime(trap,fast.slowAt+.000001).center-atTime(trap,fast.slowAt-.000001).center)<.001,'speed change preserves position continuity');
   let baseline;
   for(const fps of [30,60,144,240]){
     const run=new Game({width:614.4,height:384,random:seeded()});run.start();run.score=5;run.activateFinal();
@@ -205,13 +233,15 @@ export function checkDifficulty(){
   const recorded=resized.pipes[0],old=pipePose(recorded),distance=recorded.x-resized.bird.x;resized.resize(288,623);
   assert.ok(Math.abs(recorded.x-resized.bird.x-distance)<1e-8);
   assert.ok(Math.abs(pipePose(recorded).top.y-old.top.y-(623-384)/2)<1e-8);
-  return 'Final: continuous rails, delayed fast-descent cooldown, three-plus-two floor groups, one closing ceiling post, long-to-short ground dip and follower release passed.';
+  return 'Final: staged floor groups, stationary diagonals, variable separated rushes, optional rising-floor exits and fast tunnel gate with a continuous slow departure passed.';
 }
 export async function checkFinalClient(){
   const c=await createClient({width:1228.8,height:768});c.controller.prepareRun();c.controller.flap();
   const game=c.controller.game;game.score=5;game.activateFinal();game.pipes=chunkOfKind('diagonal-rise',{x:100,referenceBirdX:game.bird.x}).pipes;c.tick(1/240);
   const commands=c.elements.get('game').context.commands.filter(c=>c.kind==='image'&&[112,168].includes(c.args[0])&&c.args[1]>=646);
   assert.ok(commands.some(c=>c.matrix[1]>.1)&&commands.some(c=>c.matrix[1]<-.1));
+  assert.ok(commands.some(c=>c.matrix[0]*c.matrix[3]-c.matrix[1]*c.matrix[2]<0),'long pipe shafts reflect the official shaft strip');
+  assert.ok(commands.every(c=>c.args[3]!==1),'long shafts never splice in a stretched single row');
   assert.ok(c.images.every(path=>path==='/assets/flappy/official-v1.3.png'));
   assert.equal(c.elements.get('play-controls').hidden,true);
   for(const target of [c.elements.get('game'),c.elements.get('play-button')]){
@@ -221,7 +251,8 @@ export async function checkFinalClient(){
   }
   game.pipes=chunkOfKind('long-dropping-tunnel',{x:-30,referenceBirdX:game.bird.x}).pipes;game.state='ready';c.tick(1/240);
   const rendered=c.elements.get('game').context.commands.filter(c=>c.kind==='image'&&[112,168].includes(c.args[0])&&c.args[1]>=646);
-  assert.ok(rendered.at(-1).matrix[1]<0&&rendered.at(-1).matrix[2]>0,'upper diagonal overlay draws after ordinary pipes');
+  const cap=rendered.filter(c=>c.args[0]===112&&c.args[3]===26).at(-1);
+  assert.ok(cap.matrix[1]<0&&cap.matrix[2]>0,'upper diagonal overlay draws after ordinary pipes');
   return 'Final client: opposite clean pipe orientations and official artwork only passed.';
 }
 export function checkFloorVisibility(){

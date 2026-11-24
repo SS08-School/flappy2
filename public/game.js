@@ -124,13 +124,13 @@ function flap() {
 }
 $('play-button').addEventListener('click', prepareRun);
 document.addEventListener('pointerdown', event => {
-  if (event.button !== 0 || event.isPrimary === false || event.target.closest('button')) return;
+  if (event.button !== 0 || (event.target.closest('button')&&screen!=='ready'&&game.state!=='playing')) return;
   event.preventDefault(); flap();
 }, { capture: true, passive: false });
 document.addEventListener('keydown', event => {
   if(event.code==='Tab'){event.preventDefault();return;}
   // Escape deliberately has no game action.
-  if (['Space', 'ArrowUp', 'KeyW', 'Enter'].includes(event.code) && !event.target.closest('button')) {
+  if (['Space', 'ArrowUp', 'KeyW', 'Enter'].includes(event.code) && (!event.target.closest('button')||screen==='ready'||game.state==='playing')) {
     event.preventDefault(); if (!event.repeat) flap();
   }
 }, { capture: true });

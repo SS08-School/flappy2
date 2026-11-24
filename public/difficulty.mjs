@@ -8,7 +8,7 @@ export const PIPE_EXPOSURE={cap:26,ordinaryShaft:24,rapidShaft:2,ceilingMargin:1
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 export class FinalDirector {
   constructor(random=Math.random){
-    this.random=random;this.nextLong=5+Math.floor(random()*3);this.recent=[];this.lastDescent=-Infinity;
+    this.random=random;this.nextLong=5+Math.floor(random()*3);this.recent=[];this.lastDescent=-Infinity;this.lastPlunger=-Infinity;
   }
   next(id){
     let kind;
@@ -17,13 +17,14 @@ export class FinalDirector {
       this.nextLong=id+10+Math.floor(this.random()*5);kind=this.random()<.5?'long-dropping-tunnel':'long-low-tunnel';
     }else{
       const last=CAPTURED_FINAL_CHUNKS.find(c=>c.id===this.recent.at(-1));
-      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(id>=5||c.family!=='rush')&&(c.id!=='descending-pursuit'||id>=5&&id-this.lastDescent>=8));
+      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(id>=5||!['rush','plunger'].includes(c.family))&&(c.id!=='descending-pursuit'||id>=5&&id-this.lastDescent>=8)&&(c.id!=='tunnel-plunger'||id-this.lastPlunger>=8));
       const varied=pool.filter(c=>c.family!==last?.family);if(varied.length)pool=varied;
       const motifs=this.recent.map(k=>CAPTURED_FINAL_CHUNKS.find(c=>c.id===k)?.motif);
       const different=pool.filter(c=>!c.motif||!motifs.includes(c.motif));if(different.length)pool=different;
       kind=pool[Math.min(pool.length-1,Math.floor(this.random()*pool.length))].id;
     }
     if(kind==='descending-pursuit')this.lastDescent=id;
+    if(kind==='tunnel-plunger')this.lastPlunger=id;
     this.recent.push(kind);if(this.recent.length>5)this.recent.shift();
     return kind;
   }
@@ -34,13 +35,20 @@ export function triangle(time,period,phase=0){
   return 1-4*Math.abs(unit-.5);
 }
 export function motionRange(motion){
-  return ['sweep','rail'].includes(motion?.type)?[Math.min(motion.from,motion.to),Math.max(motion.from,motion.to)]:[-(motion?.amplitude||0),motion?.amplitude||0];
+  return ['sweep','rail','bank','plunger'].includes(motion?.type)?[Math.min(motion.from,motion.to),Math.max(motion.from,motion.to)]:[-(motion?.amplitude||0),motion?.amplitude||0];
 }
 export function railPosition(time,motion){
   const distance=Math.abs(motion.to-motion.from),forward=distance/motion.speed,back=distance/(motion.returnSpeed||motion.speed),period=forward+back;
   const at=((time-motion.start)%period+period)%period;
   const travel=at<forward?at*motion.speed:distance-(at-forward)*(motion.returnSpeed||motion.speed);
   return motion.from+Math.sign(motion.to-motion.from)*travel;
+}
+function rushPosition(time,motion,width){
+  const lead=(motion.trigger+width/2)/FINAL_PIPE_SPEED;
+  const holdStart=-motion.speed*lead/(FINAL_PIPE_SPEED+motion.speed),hold=motion.hold||0;
+  if(!hold||time<holdStart)return -Math.max(0,(time+lead)*motion.speed);
+  const start=-(holdStart+lead)*motion.speed;
+  return start+Math.min(time-holdStart,hold)*FINAL_PIPE_SPEED;
 }
 export function pipeMotion(pipe,xOffset=0,part){
   const motion=(part&&(pipe[part+'FittedMotion']||pipe[part+'Motion']))||pipe.fittedMotion||pipe.motion;
@@ -50,17 +58,19 @@ export function pipeMotion(pipe,xOffset=0,part){
   if(motion.type==='rush'){
     // The fixed maximum-view approach is relative to the bird, not the screen
     // center. Extra travel starts offscreen, so a visible gate is already moving.
-    const lead=(motion.trigger+pipe.width/2)/FINAL_PIPE_SPEED;
-    const holdStart=-motion.speed*lead/(FINAL_PIPE_SPEED+motion.speed),hold=motion.hold||0;
-    const approach=-Math.max(0,(time+lead)*motion.speed);
-    if(!hold||time<holdStart)return {x:approach,y:0};
-    const start=-(holdStart+lead)*motion.speed;
-    if(time<holdStart+hold)return {x:start+(time-holdStart)*FINAL_PIPE_SPEED,y:0};
-    // Release the follower into ordinary world scrolling; do not launch it
-    // left a second time once its brief screen-stationary hold has ended.
-    return {x:start+hold*FINAL_PIPE_SPEED,y:0};
+    let previousRight=-Infinity,left;
+    for(const ahead of [...(pipe.rushAhead||[]),{distance:0,motion,width:pipe.width}]){
+      const at=pipe.x-ahead.distance,clock=(pipe.referenceBirdX-at-xOffset-ahead.width/2)/FINAL_PIPE_SPEED;
+      left=Math.max(at+rushPosition(clock,ahead.motion,ahead.width),previousRight+3);
+      previousRight=left+ahead.width;
+    }
+    return {x:left-pipe.x,y:0};
   }
-  const y=motion.type==='rail'?railPosition(time,motion):motion.type==='sweep'?(motion.preFrom!==undefined&&time<motion.start
+  const y=motion.type==='bank'?(time<=motion.start?motion.from:time<=motion.start+Math.abs(motion.to-motion.from)/motion.speed
+    ?motion.from+Math.sign(motion.to-motion.from)*(time-motion.start)*motion.speed
+    :motion.to+Math.sign(motion.from-motion.to)*Math.min(Math.abs(motion.to-motion.from),(time-motion.start-Math.abs(motion.to-motion.from)/motion.speed)*motion.returnSpeed))
+    :motion.type==='plunger'?railPosition(time<=motion.slowAt?time:motion.slowAt+(time-motion.slowAt)*motion.afterSpeed/motion.speed,motion)
+    :motion.type==='rail'?railPosition(time,motion):motion.type==='sweep'?(motion.preFrom!==undefined&&time<motion.start
     ?motion.from+Math.sign(motion.preFrom-motion.from)*clamp((motion.start-time)*motion.preSpeed,0,Math.abs(motion.preFrom-motion.from))
     :motion.from+Math.sign(motion.to-motion.from)*clamp((time-motion.start)*motion.speed,0,Math.abs(motion.to-motion.from)))
     :motion.amplitude*triangle(time,motion.period,motion.phase);
@@ -95,7 +105,7 @@ export function fitFloorVisibility(pipes,ground){
     const shaft=pipe.lowDip?PIPE_EXPOSURE.rapidShaft:PIPE_EXPOSURE.ordinaryShaft;
     const depth=pipe.width/2*Math.abs(Math.sin(post.angle))+(PIPE_EXPOSURE.cap+shaft)*Math.cos(post.angle);
     const excess=Math.max(0,post.y+amplitude+depth-ground);
-    if(!['triangle','sweep','rail'].includes(motion?.type)){pipe.floorLift=excess;continue;}
+    if(!['triangle','sweep','rail','bank','plunger'].includes(motion?.type)){pipe.floorLift=excess;continue;}
     const paired=!pipe.bottomMotion;
     const key=[pipe.chunkId,pipe.safetyGroup,paired?'pair':'floor',motion.group??'',motion.type,motion.period,motion.phase,motion.from,motion.to,motion.speed,motion.returnSpeed,motion.start].join(':');
     if(!groups.has(key))groups.set(key,{pipes:[],motion,paired,excess:0});
@@ -103,9 +113,9 @@ export function fitFloorVisibility(pipes,ground){
   }
   for(const {pipes:bank,motion,paired,excess} of groups.values()){
     if(excess<=0)continue;
-    if(['sweep','rail'].includes(motion.type)){
-      // Translate the whole rail, retaining its complete measured travel and
-      // duration. Ground fitting must never turn it into a short fast bounce.
+    if(['sweep','rail','bank','plunger'].includes(motion.type)){
+      // Translate the whole path, retaining its complete travel and duration.
+      // Ground fitting must never turn it into a short fast bounce.
       for(const pipe of bank){if(paired)pipe.pairedLift=excess;else pipe.floorLift=excess;}
       continue;
     }
@@ -204,6 +214,9 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
       safetyGroup:pair.safetyGroup||0,lowDip:pair.lowDip||false,allowRoofOverlap:pair.allowRoofOverlap||false,arrivalClearance:source.motif==='floor-bank',shaftGap:source.diagonal?2:3,verticalOffset:verticalOffset-layoutOffset+ownLayoutOffset,layoutOffset:ownLayoutOffset,referenceBirdX};
     return Object.assign(pipe,pipePose(pipe));
   });
+  for(let i=0;i<pipes.length;i++)if(pipes[i].motion?.type==='rush'){
+    pipes[i].rushAhead=pipes.slice(0,i).filter(p=>p.motion?.type==='rush').map(p=>({distance:pipes[i].x-p.x,motion:p.motion,width:p.width}));
+  }
   // A close moving-gate continuation clears the preceding angled floors at
   // any viewport height. Only its designated upper connection may overlap.
   for(let i=0;i<pipes.length;i++)if(layout[i].afterFloor||layout[i].overlayAfter){
@@ -252,12 +265,12 @@ export function flightTarget(chunk,x,clockX=x){
     const blend=clamp((x-(chunk.startX-104))/104,0,1)*clamp((chunk.nextX-x)/(chunk.nextX-chunk.endX),0,1);
     return pathHeight(chunk.safePath,x)+shift.y*.5*blend;
   }
-  const moving=chunk.pipes.find(p=>['triangle','sweep','rail'].includes(p.motion?.type));
+  const moving=chunk.pipes.find(p=>['triangle','sweep','rail','bank','plunger'].includes(p.motion?.type));
   if(!moving)return pathHeight(chunk.safePath,x);
   const shift=pipeMotion({...moving,referenceBirdX:clockX},0,'bottom').y;
   const first=moving.x+moving.width/2;
-  const partial=chunk.pipes.some(p=>!['triangle','sweep','rail'].includes(p.motion?.type));
-  const lastMoving=chunk.pipes.filter(p=>['triangle','sweep','rail'].includes(p.motion?.type)).at(-1);
+  const partial=chunk.pipes.some(p=>!['triangle','sweep','rail','bank','plunger'].includes(p.motion?.type));
+  const lastMoving=chunk.pipes.filter(p=>['triangle','sweep','rail','bank','plunger'].includes(p.motion?.type)).at(-1);
   const fadeStart=partial?lastMoving.x+lastMoving.width+12:chunk.endX;
   const fadeEnd=partial?fadeStart+78:chunk.nextX;
   const weight=clamp((x-(chunk.startX-104))/(first-(chunk.startX-104)),0,1)*clamp((fadeEnd-x)/(fadeEnd-fadeStart),0,1);

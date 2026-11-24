@@ -18,6 +18,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
       restore() { const state = stack.pop(); matrix = state.matrix; this.globalAlpha = state.alpha; this.fillStyle = state.fill; },
       translate(x,y) { matrix[4] += matrix[0]*x + matrix[2]*y; matrix[5] += matrix[1]*x + matrix[3]*y; },
       rotate(angle) { const [a,b,c,d,e,f]=matrix, co=Math.cos(angle),si=Math.sin(angle); matrix=[a*co+c*si,b*co+d*si,c*co-a*si,d*co-b*si,e,f]; },
+      scale(x,y) { matrix[0]*=x;matrix[1]*=x;matrix[2]*=y;matrix[3]*=y; },
       setTransform(...value) { matrix=value; commands.length=0; this.renderCount++; },
       fillText() { throw new Error('Only official sprite text is allowed'); },
     };
@@ -231,6 +232,18 @@ export async function checkInputLatency() {
       for(let i=0;i<10;i++)game.presentation();
       assert.deepEqual({y:game.bird.y,vy:game.bird.vy,score:game.score,distance:game.distance},state);
     }
+  }
+  const mixed=await createClient();
+  let menuPrevented=false;
+  mixed.events.get('pointerdown')({button:0,target:{closest:()=>mixed.elements.get('play-button')},preventDefault(){menuPrevented=true;}});
+  assert.equal(menuPrevented,false,'menu buttons retain their ordinary click behavior');
+  mixed.controller.prepareRun();mixed.controller.flap();
+  const buttonTarget={closest:()=>mixed.elements.get('play-button')};
+  for(let i=0;i<40;i++){
+    const game=mixed.controller.game;game.bird.y=180;game.bird.vy=200;
+    if(i%2)mixed.events.get('pointerdown')({button:0,isPrimary:false,pointerType:'touch',target:buttonTarget,preventDefault(){}});
+    else mixed.events.get('keydown')({code:i%4?'KeyW':'Space',repeat:false,target:buttonTarget,preventDefault(){}});
+    assert.equal(game.bird.vy,PHYSICS.flap,'every distinct press registers during play, including alternate fingers and a retained button target');
   }
   return 'Input latency: keyboard and pointer flaps rise on the next frame at 60–240 Hz, without advancing physics or replaying old motion.';
 }
