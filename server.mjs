@@ -11,7 +11,7 @@ export async function createApp() {
   for (const asset of ASSET_FILES) files[`/assets/flappy/${asset}`] = `assets/flappy/${asset}`;
   files['/audio.mjs'] = 'audio.mjs'; files['/medal-presentation.mjs'] = 'medal-presentation.mjs';
   files['/difficulty.mjs'] = 'difficulty.mjs';
-  files['/final-chunks.mjs'] = 'final-chunks.mjs';
+  files['/level3-chunks.mjs'] = 'level3-chunks.mjs';
   files['/pipe-safety.mjs'] = 'pipe-safety.mjs';
   for (const file of Object.values(SOUND_FILES)) files[`/assets/audio/${file}`] = `assets/audio/${file}`;
   const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg' };

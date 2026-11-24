@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
-import { createFinalChunk, pipePose, pipeShaftLength, pipeBounds } from '../public/difficulty.mjs';
+import { createLevel3Chunk, pipePose, pipeShaftLength, pipeBounds, level3PipeHits } from '../public/difficulty.mjs';
 
 export async function createClient({ reducedMotion = true, width = 480, height = 640, dpr = 1, random = () => 0, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
   const elements = new Map(), frames = [], stored = new Map(), images = [], events = new Map(), windowEvents=new Map();
@@ -213,10 +213,10 @@ export async function checkPipeSampling() {
       const c=await createClient({width,height,dpr,random:()=>.5});c.controller.prepareRun();c.controller.flap();
       const game=c.controller.game;game.state='ready';
       game.pipes=kind==='classic'?[{x:220,center:168,gap:100,width:52,level:1}]
-        :createFinalChunk({x:200,ground:game.ground,kind,entryCenter:game.ground/2,referenceBirdX:game.bird.x,random:()=>.5}).pipes;
+        :createLevel3Chunk({x:0,ground:game.ground,kind,entryCenter:game.ground/2,referenceBirdX:game.bird.x,random:()=>.5}).pipes;
       let first,previous;const positions=new Set();
       for(let frame=0;frame<24;frame++){
-        for(const pipe of game.pipes){pipe.x-=118/240;if(pipe.level==='final')pipe.referenceBirdX=pipe.x-pipe.chunkOffset+26+(1.2+frame/240)*118;}
+        for(const pipe of game.pipes){pipe.x-=118/240;if(pipe.level===3)pipe.referenceBirdX=pipe.x-pipe.chunkOffset+26+(1.2+frame/240)*118;}
         c.tick(1/240);
         const commands=c.elements.get('game').context.commands;
         const cap=commands.find(q=>q.kind==='image'&&q.args[0]===(kind==='diagonal-rise'?168:112)&&(q.args[3]===26||kind==='classic'));
@@ -283,7 +283,7 @@ export async function checkInputLatency() {
 
 export async function checkResponsiveClient() {
   for (const [displayWidth,displayHeight] of [[1920,1200],[1920,1080],[3440,1440],[1024,768],[390,844],[844,390]]) {
-    const width=Math.min(displayWidth,displayHeight*16/10), height=displayHeight;
+    const width=Math.min(displayWidth,displayHeight*16/10), height=Math.min(displayHeight,displayWidth*16/10);
     const c=await createClient({width,height}), game=c.controller.game;
     c.tick(.02);
     const context=c.elements.get('game').context;
@@ -308,6 +308,49 @@ export async function checkResponsiveClient() {
   assert.equal(game.state,'playing');assert.equal(game.score,8);
   assert.ok(Math.abs(game.pipes[0].x-game.bird.x-100)<1e-9,'resize preserves obstacle distance without resetting the run');
   return 'Responsive layout: phone/tablet/16:10/capped wide frames keep sprites and screens centered; live resize preserves the run.';
+}
+
+export async function checkDeviceInvariantGameplay(){
+  const shapes=[[1920,1200],[1024,768],[390,844],[844,390],[360,800]];
+  const number=n=>Number(n.toFixed(6));
+  const snapshot=(game,time=0)=>game.pipes.map(pipe=>{
+    const sample={...pipe,x:pipe.x-game.speed*time,referenceBirdX:game.bird.x};
+    const pose=pipePose(sample);
+    return {level:pipe.level,kind:pipe.kind,x:number(sample.x-game.bird.x),center:number(pose.center),
+      top:pose.top&&[number(pose.top.x),number(pose.top.y),number(pose.top.angle)],
+      bottom:pose.bottom&&[number(pose.bottom.x),number(pose.bottom.y),number(pose.bottom.angle)],
+      hit:pipe.level===3?level3PipeHits(sample,{x:game.bird.x,y:168+Math.sin(time)*55,radius:12},game.ground):false};
+  });
+  for(const seed of [17,823,9182]){
+    let expected;
+    for(const [width,height] of shapes){
+      let state=seed;const random=()=>((state=(Math.imul(state,1664525)+1013904223)>>>0)/4294967296);
+      const view=viewportLayout(width,height),game=new Game({...view,random});game.start();game.score=5;game.activateLevel3();
+      for(let i=0;i<12;i++)game.appendLevel3Chunk();
+      assert.equal(game.difficulty,3);assert.equal(game.height,384);assert.equal(game.ground,336);
+      const samples=[0,.137,1,4,8,13,21,34].map(time=>snapshot(game,time));
+      expected ||= samples;assert.deepEqual(samples,expected,'pipe layout, motion and collision decisions depend on gameplay time, not device shape');
+      game.bird.y=201;game.bird.vy=-123;const before=snapshot(game,1.3),queue=number(game.nextChunkX-game.bird.x),port={...game.lastExitPort};
+      for(const [nextWidth,nextHeight] of shapes){
+        const next=viewportLayout(nextWidth,nextHeight);game.resize(next.width,next.height);
+        assert.equal(game.bird.y,201);assert.equal(game.bird.vy,-123);assert.equal(game.difficulty,3);
+        assert.deepEqual(snapshot(game,1.3),before,'rotation changes only camera framing, including for moving gates and roofs');
+        assert.equal(number(game.nextChunkX-game.bird.x),queue);assert.deepEqual(game.lastExitPort,port);
+      }
+    }
+  }
+  const c=await createClient({width:390,height:844});c.controller.prepareRun();c.controller.flap();
+  c.controller.game.bird.y=201;c.controller.game.bird.vy=-123;c.controller.game.score=8;
+  c.resize(844,390);
+  assert.equal(c.controller.game.state,'playing','phone rotation never pauses or resets the run');
+  assert.equal(c.controller.game.bird.y,201);assert.equal(c.controller.game.bird.vy,-123);assert.equal(c.controller.game.score,8);
+  for(const type of ['selectstart','dragstart','contextmenu','dblclick','gesturestart','gesturechange','gestureend','touchmove']){
+    let prevented=false;c.events.get(type)({preventDefault(){prevented=true;}});assert.ok(prevented,'mobile browser interaction is blocked: '+type);
+  }
+  const css=await readFile(new URL('../public/style.css',import.meta.url),'utf8');
+  assert.ok(css.includes('user-select:none')&&css.includes('-webkit-touch-callout:none')&&css.includes('touch-action:none'));
+  assert.ok(css.includes('height:min(100dvh,160dvw)')&&css.includes('width:min(100dvw,160dvh)'),'both display orientations obey the 16:10 cap');
+  return 'Device invariance: seeded level 3 layouts, moving-pipe poses, collisions and live rotations match across phone and desktop views; mobile selection, scrolling and callouts are blocked.';
 }
 
 export async function checkPreciseInputTiming() {

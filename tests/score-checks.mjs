@@ -5,7 +5,7 @@ import { createClient } from './client-checks.mjs';
 
 // Inspect actual atlas pixels so a swapped digit cannot pass by merely
 // asserting that the renderer uses the same incorrect coordinate table.
-async function readAtlas() {
+export async function readAtlasPixels() {
   const png = await readFile(new URL('../public/assets/flappy/official-v1.3.png', import.meta.url));
   const width = png.readUInt32BE(16), height = png.readUInt32BE(20), chunks=[];
   assert.equal(png[24],8); assert.equal(png[25],6); assert.equal(png[28],0);
@@ -24,12 +24,12 @@ async function readAtlas() {
       pixels[index]=(raw[y*(stride+1)+x+1]+prediction)&255;
     }
   }
-  const white=(x,y)=>{const i=(y*width+x)*4;return pixels[i]>240&&pixels[i+1]>240&&pixels[i+2]>240&&pixels[i+3]>240;};
-  return white;
+  return { width, height, pixels };
 }
 
 export async function checkScoreDigits() {
-  const white=await readAtlas();
+  const {width,pixels}=await readAtlasPixels();
+  const white=(x,y)=>{const i=(y*width+x)*4;return pixels[i]>240&&pixels[i+1]>240&&pixels[i+2]>240&&pixels[i+3]>240;};
   // Top, upper left/right, middle, lower left/right, bottom strokes.
   const strokes=['1110111','0010010','1011101','1011011','0111010','1101011','1101111','1010010','1111111','1111011'];
   const identify=command=>{

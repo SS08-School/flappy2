@@ -1,38 +1,38 @@
 import assert from 'node:assert/strict';
 import { Game,PHYSICS } from '../public/engine.mjs';
-import { FINAL_TEST_SCORE,FINAL_PIPE_SPEED,FINAL_OPENING_ID,FINAL_CHUNK_KINDS,FinalDirector,createFinalChunk,chunkOpening,pipePose,pipeMotion,finalPipeHits,pipeBounds,pipeScoreX,triangle } from '../public/difficulty.mjs';
-import { CAPTURED_FINAL_CHUNKS } from '../public/final-chunks.mjs';
+import { LEVEL3_TEST_SCORE,LEVEL3_PIPE_SPEED,LEVEL3_OPENING_ID,LEVEL3_CHUNK_KINDS,Level3Director,createLevel3Chunk,chunkOpening,pipePose,pipeMotion,level3PipeHits,pipeBounds,pipeScoreX,triangle } from '../public/difficulty.mjs';
+import { LEVEL3_CHUNKS } from '../public/level3-chunks.mjs';
 import { createClient } from './client-checks.mjs';
 const seeded=(seed=17)=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
-export function chunkOfKind(kind,options={}){return createFinalChunk({x:614.4,ground:336,referenceBirdX:188,kind,...options});}
-function atTime(pipe,time){pipe.referenceBirdX=pipe.x-pipe.chunkOffset+26+time*FINAL_PIPE_SPEED;return pipePose(pipe);}
+export function chunkOfKind(kind,options={}){return createLevel3Chunk({x:614.4,ground:336,referenceBirdX:188,kind,...options});}
+function atTime(pipe,time){pipe.referenceBirdX=pipe.x-pipe.chunkOffset+26+time*LEVEL3_PIPE_SPEED;return pipePose(pipe);}
 export function checkDifficulty(){
-  assert.equal(FINAL_TEST_SCORE,5);assert.equal(FINAL_PIPE_SPEED,118);
+  assert.equal(LEVEL3_TEST_SCORE,5);assert.equal(LEVEL3_PIPE_SPEED,118);
   const events=[],game=new Game({width:614.4,height:384,random:()=>.5,onEvent:(type,data)=>events.push({type,data})});
   game.start();assert.equal(game.difficulty,1);assert.equal(game.speed,120);
-  let lastClassic,firstFinal;
+  let lastClassic,firstLevel3;
   for(let i=0;i<540;i++){
     game.bird.y=168;game.bird.vy=0;game.update(PHYSICS.step);
-    if(game.finalQueued&&!firstFinal){
-      assert.ok(game.score<5);lastClassic=game.pipes.filter(p=>p.level===1).at(-1);firstFinal=game.pipes.find(p=>p.level==='final');
-      assert.equal(firstFinal.kind,FINAL_OPENING_ID);assert.ok(firstFinal.motion);
+    if(game.level3Queued&&!firstLevel3){
+      assert.ok(game.score<5);lastClassic=game.pipes.filter(p=>p.level===1).at(-1);firstLevel3=game.pipes.find(p=>p.level===3);
+      assert.equal(firstLevel3.kind,LEVEL3_OPENING_ID);assert.ok(firstLevel3.motion);
       assert.equal(game.classicSpawned,5);
-      assert.ok(Math.abs(firstFinal.x-lastClassic.x-156)<1e-8,'no added gap at the level switch');
-      for(const p of game.pipes.filter(p=>p.level==='final'))assert.ok(pipeBounds(p,game.ground).minX>=game.width-1e-8,'queue entire sections offscreen');
+      assert.ok(Math.abs(firstLevel3.x-lastClassic.x-156)<1e-8,'no added gap at the level switch');
+      for(const p of game.pipes.filter(p=>p.level===3))assert.ok(pipeBounds(p,game.ground).minX>=game.width-1e-8,'queue entire sections offscreen');
     }
-    if(firstFinal)assert.ok(Math.abs(firstFinal.x-lastClassic.x-156)<1e-7);
+    if(firstLevel3)assert.ok(Math.abs(firstLevel3.x-lastClassic.x-156)<1e-7);
   }
-  assert.equal(game.score,5);assert.equal(game.difficulty,'final');assert.equal(game.speed,118);
+  assert.equal(game.score,5);assert.equal(game.difficulty,3);assert.equal(game.speed,118);
   assert.equal(events.filter(e=>e.type==='difficulty').length,1);
   const before=game.pipes.map(p=>[p.x,pipePose(p)]);game.hit();game.update(.1);
   assert.deepEqual(game.pipes.map(p=>[p.x,pipePose(p)]),before,'all motion freezes on hit');
-  game.start();assert.equal(game.difficulty,1);assert.equal(game.finalQueued,false);
+  game.start();assert.equal(game.difficulty,1);assert.equal(game.level3Queued,false);
   const seen=new Set(),random=seeded();let previousKind,previousFamily;
   for(let i=0;i<200;i++){
-    const chunk=createFinalChunk({x:614.4,ground:336,referenceBirdX:188,random,previousKind});
+    const chunk=createLevel3Chunk({x:614.4,ground:336,referenceBirdX:188,random,previousKind});
     assert.notEqual(chunk.kind,previousKind);seen.add(chunk.kind);
     if(['tunnel','rising','diagonal'].includes(previousFamily))assert.notEqual(chunk.family,previousFamily,'a dense section cannot chain directly into more of the same tunnel');
-    const source=CAPTURED_FINAL_CHUNKS.find(c=>c.id===chunk.kind);
+    const source=LEVEL3_CHUNKS.find(c=>c.id===chunk.kind);
     assert.equal(chunk.pipes.length,chunk.layout.length);
     chunk.pipes.forEach((p,j)=>{
       assert.equal(p.width,52);
@@ -48,17 +48,17 @@ export function checkDifficulty(){
     assert.ok(chunk.nextX-chunk.endX>=3-1e-7&&chunk.nextX-chunk.endX<=24+1e-7,'sections meet without large empty padding');
     previousKind=chunk.kind;previousFamily=chunk.family;
   }
-  assert.equal(seen.size,CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare).length);
-  const director=new FinalDirector(seeded()),rapid=[],long=[],history=[],descents=[],rushes=[];
+  assert.equal(seen.size,LEVEL3_CHUNKS.filter(c=>!c.rare).length);
+  const director=new Level3Director(seeded()),rapid=[],long=[],history=[],descents=[],rushes=[];
   for(let id=0;id<120;id++){
     const kind=director.next(id);
     assert.ok(!history.slice(-5).includes(kind),'no formation repeats within five chunks');history.push(kind);
-    if(CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind)?.family==='rush'){
+    if(LEVEL3_CHUNKS.find(c=>c.id===kind)?.family==='rush'){
       assert.ok(id>=5,'both rush lengths are excluded from the opening five chunks');
       if(rushes.length)assert.ok(id-rushes.at(-1)>=6,'five complete chunks separate any two rush sections');
       rushes.push(id);
     }
-    if(id===0)assert.equal(kind,FINAL_OPENING_ID);
+    if(id===0)assert.equal(kind,LEVEL3_OPENING_ID);
     if(kind==='descending-pursuit'){
       assert.ok(id>=5,'fast descent cannot appear in the first five chunks');
       if(descents.length)assert.ok(id-descents.at(-1)>=8,'seven intervening chunks before another fast descent');
@@ -72,10 +72,10 @@ export function checkDifficulty(){
   assert.ok(long.length>=6&&long.length<=12);
   let precededRushes=0,plainRushes=0;const roofSeen=new Set();
   for(let seed=1;seed<=20;seed++){
-    const director=new FinalDirector(seeded(seed));let sections=0,lastRush=-Infinity,lastRoof=-Infinity,previous;
+    const director=new Level3Director(seeded(seed));let sections=0,lastRush=-Infinity,lastRoof=-Infinity,previous;
     for(let id=0;id<100;id++){
-      const kind=director.next(id),rush=CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind)?.family==='rush';
-      if(CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind)?.motif==='floor-bank'){
+      const kind=director.next(id),rush=LEVEL3_CHUNKS.find(c=>c.id===kind)?.family==='rush';
+      if(LEVEL3_CHUNKS.find(c=>c.id===kind)?.motif==='floor-bank'){
         assert.ok(sections-lastRoof>=7,'six complete intervening chunks separate every roof variant');
         lastRoof=sections;roofSeen.add(kind);
       }
@@ -91,7 +91,7 @@ export function checkDifficulty(){
   }
   assert.ok(precededRushes>0&&plainRushes>0,'rising floors sometimes precede rushes without becoming mandatory');
   assert.equal(roofSeen.size,3,'all three roof variants remain available with the shared cooldown');
-  assert.ok(CAPTURED_FINAL_CHUNKS.every(c=>!c.id.includes('rapid')&&!c.id.includes('reversing')));
+  assert.ok(LEVEL3_CHUNKS.every(c=>!c.id.includes('rapid')&&!c.id.includes('reversing')));
   for(const kind of ['long-dropping-tunnel','long-low-tunnel']){
     const tunnel=chunkOfKind(kind);
     assert.equal(tunnel.pipes.length,10);assert.ok(tunnel.pipes.at(-1).allowRoofOverlap);
@@ -101,7 +101,7 @@ export function checkDifficulty(){
   assert.equal(flat.pipes.at(-1).x-flat.pipes[0].x+52,272,'five columns with small visible gaps, not a concatenated tunnel');
   for(const p of flat.pipes){assert.equal(p.motion,undefined);assert.deepEqual(atTime(p,0),atTime(p,20));}
   for(const entryCenter of [100,168,236]){
-    const opening=chunkOfKind(FINAL_OPENING_ID,{entryCenter});
+    const opening=chunkOfKind(LEVEL3_OPENING_ID,{entryCenter});
     assert.ok(Math.abs(pipePose(opening.pipes[1]).center-pipePose(opening.pipes[2]).center)>=16,'opening static pairs always have distinct elevations');
   }
   const rising=chunkOfKind('rising-trio');assert.equal(rising.pipes.length,6);
@@ -112,7 +112,7 @@ export function checkDifficulty(){
   for(const kind of ['diagonal-rise','diagonal-fall']){
     const chunk=chunkOfKind(kind,{random:()=>.5}),bank={pipes:chunk.pipes.slice(0,6)};
     assert.equal(bank.pipes.length,6,'roof formation has a rising trio, returning pair and fixed third exit pipe');
-    assert.equal(bank.pipes.filter(p=>!p.noTop).length,5,'leading roof and four aligned roof pipes cover the floor formation');
+    assert.equal(bank.pipes.filter(p=>!p.noTop).length,6,'intermediate roof fills the missing shaft between the leading pipe and slope');
     const roof=bank.pipes.map(p=>atTime(p,0).top);
     assert.ok(new Set(roof.map(p=>p.y)).size>=3,'fixed roof has staggered cap lengths');
     for(const p of bank.pipes){assert.equal(p.top.angle,Math.PI/4);assert.equal(p.bottom.angle,-Math.PI/4);}
@@ -155,7 +155,7 @@ export function checkDifficulty(){
     atTime(bank.pipes[0],.1);atTime(bank.pipes[3],.1);
     assert.ok(Math.abs(pipeMotion(bank.pipes[0],0,'bottom').y-pipeMotion(bank.pipes[3],0,'bottom').y)>1,'groups do not move as one oversized opening');
     const p=bank.pipes[0],post=pipePose(p).top;
-    assert.ok(finalPipeHits(p,{x:p.x+26+post.x+Math.sin(post.angle)*4,y:post.y-Math.cos(post.angle)*4,radius:12},336));
+    assert.ok(level3PipeHits(p,{x:p.x+26+post.x+Math.sin(post.angle)*4,y:post.y-Math.cos(post.angle)*4,radius:12},336));
     const leadStop=leadPeak+160/lead.bottomMotion.returnSpeed,tailStop=tailPeak+(tail.bottomMotion.returnTo-tail.bottomMotion.to)/tail.bottomMotion.returnSpeed;
     assert.ok(Math.abs(leadStop-tailStop)<1e-8,'following pair stops simultaneously');
     for(const fraction of [.01,.25,.5,.75,.99]){
@@ -334,7 +334,7 @@ export function checkDifficulty(){
     };
     assert.ok(minimum(high)<minimum(ordinary)-7,'higher diagonal route is slightly narrower');
   }
-  for(const kind of [FINAL_OPENING_ID,...FINAL_CHUNK_KINDS])for(const pipe of chunkOfKind(kind).pipes){
+  for(const kind of [LEVEL3_OPENING_ID,...LEVEL3_CHUNK_KINDS])for(const pipe of chunkOfKind(kind).pipes){
     for(const part of ['top','bottom']){
       const motion=pipe[part+'Motion']||pipe.motion;if(!motion||motion.type==='rush')continue;
       assert.ok(['rail','bank','plunger','sweep'].includes(motion.type),'vertical motion uses deterministic paths');
@@ -374,20 +374,20 @@ export function checkDifficulty(){
   assert.ok(Math.abs(atTime(trap,fast.slowAt+.000001).center-atTime(trap,fast.slowAt-.000001).center)<.001,'speed change preserves position continuity');
   let baseline;
   for(const fps of [30,60,144,240]){
-    const run=new Game({width:614.4,height:384,random:seeded()});run.start();run.score=5;run.activateFinal();
+    const run=new Game({width:614.4,height:384,random:seeded()});run.start();run.score=5;run.activateLevel3();
     let remaining=1.6;while(remaining>1e-10){const dt=Math.min(remaining,1/fps);run.bird.y=168;run.bird.vy=0;run.update(dt);remaining-=dt;}
     assert.equal(run.state,'playing');const sample=run.pipes.map(p=>[p.x,p.center].map(v=>Number(v.toFixed(6))));baseline ||= sample;assert.deepEqual(sample,baseline);
   }
-  const resized=new Game({width:614.4,height:384});resized.start();resized.score=5;resized.activateFinal();
+  const resized=new Game({width:614.4,height:384});resized.start();resized.score=5;resized.activateLevel3();
   resized.pipes=chunkOfKind('rising-trio',{x:300,referenceBirdX:resized.bird.x}).pipes;
   const recorded=resized.pipes[0],old=pipePose(recorded),distance=recorded.x-resized.bird.x;resized.resize(288,623);
   assert.ok(Math.abs(recorded.x-resized.bird.x-distance)<1e-8);
-  assert.ok(Math.abs(pipePose(recorded).top.y-old.top.y-(623-384)/2)<1e-8);
-  return 'Final: synchronized floor groups, high stationary diagonals, varied separated rushes, occasional continuously rising floors and guided elevator passage passed.';
+  assert.ok(Math.abs(pipePose(recorded).top.y-old.top.y)<1e-8,'resizing never moves a pipe vertically');
+  return 'Level 3: synchronized floor groups, high stationary diagonals, varied separated rushes, occasional continuously rising floors and guided elevator passage passed.';
 }
-export async function checkFinalClient(){
+export async function checkLevel3Client(){
   const c=await createClient({width:1228.8,height:768});c.controller.prepareRun();c.controller.flap();
-  const game=c.controller.game;game.score=5;game.activateFinal();game.pipes=chunkOfKind('diagonal-rise',{x:100,referenceBirdX:game.bird.x}).pipes;c.tick(1/240);
+  const game=c.controller.game;game.score=5;game.activateLevel3();game.pipes=chunkOfKind('diagonal-rise',{x:100,referenceBirdX:game.bird.x}).pipes;c.tick(1/240);
   const commands=c.elements.get('game').context.commands.filter(c=>c.kind==='image'&&[112,168].includes(c.args[0])&&c.args[1]>=646);
   assert.ok(commands.some(c=>c.matrix[1]>.1)&&commands.some(c=>c.matrix[1]<-.1));
   assert.ok(commands.some(c=>c.matrix[0]*c.matrix[3]-c.matrix[1]*c.matrix[2]<0),'long pipe shafts reflect the official shaft strip');
@@ -403,7 +403,7 @@ export async function checkFinalClient(){
   const rendered=c.elements.get('game').context.commands.filter(c=>c.kind==='image'&&[112,168].includes(c.args[0])&&c.args[1]>=646);
   const cap=rendered.filter(c=>c.args[0]===112&&c.args[3]===26).at(-1);
   assert.ok(cap.matrix[1]<0&&cap.matrix[2]>0,'upper diagonal overlay draws after ordinary pipes');
-  return 'Final client: opposite clean pipe orientations and official artwork only passed.';
+  return 'Level 3 client: opposite clean pipe orientations and official artwork only passed.';
 }
 export function checkFloorVisibility(){
   const visible=(pipe,ground)=>{
@@ -416,13 +416,13 @@ export function checkFloorVisibility(){
     if(!pipe.noTop)assert.ok(Math.min(...roofCorners)>=12-1e-7,pipe.kind+': entire upper cap stays clear of the ceiling');
   };
   for(const ground of [336,575,960])for(const entryCenter of [100,ground/2,ground-100]){
-    for(const kind of [FINAL_OPENING_ID,...FINAL_CHUNK_KINDS]){
+    for(const kind of [LEVEL3_OPENING_ID,...LEVEL3_CHUNK_KINDS]){
       const chunk=chunkOfKind(kind,{ground,entryCenter});
       for(let time=0;time<13;time+=.037)for(const pipe of chunk.pipes){atTime(pipe,time);visible(pipe,ground);}
     }
   }
-  const resized=new Game({width:288,height:1008});resized.start();resized.score=5;resized.activateFinal();
-  resized.pipes=chunkOfKind('diagonal-rise',{ground:960,entryCenter:800}).pipes;
+  const resized=new Game({width:288,height:1008});resized.start();resized.score=5;resized.activateLevel3();
+  resized.pipes=chunkOfKind('diagonal-rise',{ground:resized.ground,entryCenter:168}).pipes;
   resized.resize(614.4,384);
   for(let time=0;time<3;time+=.017)for(const pipe of resized.pipes){atTime(pipe,time);visible(pipe,resized.ground);}
   const moving=chunkOfKind('diagonal-rise',{entryCenter:236}).pipes[3],motion=moving.bottomMotion;

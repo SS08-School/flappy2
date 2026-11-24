@@ -43,9 +43,11 @@ export function checkEngine() {
   assert.ok(!('health' in game) && !('pickups' in game) && !('active' in game), 'no proposal mechanics');
   for (const [width, height] of [[1920,1080],[390,844],[844,390],[288,384],[2560,1080]]) {
     const view = viewportLayout(width, height);
-    assert.ok(Math.abs(view.width * view.scale - width) < .001);
-    assert.ok(Math.abs(view.height * view.scale - height) < .001);
-    assert.ok(view.width >= METRICS.width - .001 && view.height >= METRICS.height - .001);
+    assert.ok(Math.abs(view.width * view.scale - view.pixelsWide) < .001);
+    assert.ok(Math.abs(view.height * view.scale - view.pixelsHigh) < .001);
+    assert.equal(view.height,METRICS.height);
+    assert.ok(view.width>=240-.001&&view.width<=614.4+.001);
+    assert.ok(Math.max(view.pixelsWide/view.pixelsHigh,view.pixelsHigh/view.pixelsWide)<=1.6+1e-9);
   }
   game.start();
   const pump = () => { game.bird.y = 188; game.bird.vy = 0; game.update(PHYSICS.step); };
@@ -116,7 +118,7 @@ export async function checkServer() {
       assert.equal(sound.headers.get('content-type'), file.endsWith('.ogg') ? 'audio/ogg' : 'audio/mpeg');
       assert.deepEqual(Buffer.from(await sound.arrayBuffer()), await readFile(new URL('../public/assets/audio/' + file, import.meta.url)));
     }
-    for (const file of ['audio.mjs','medal-presentation.mjs','difficulty.mjs','final-chunks.mjs','pipe-safety.mjs']) assert.equal((await fetch(base + '/' + file)).status, 200);
+    for (const file of ['audio.mjs','medal-presentation.mjs','difficulty.mjs','level3-chunks.mjs','pipe-safety.mjs']) assert.equal((await fetch(base + '/' + file)).status, 200);
     for (const path of ['/server.mjs','/data/flabby.sqlite','/api/me','/api/leaderboard','/assets/flappy/sfx_wing.wav','/assets/flappy/%2e%2e%2fserver.mjs']) assert.equal((await fetch(base + path)).status, 404, `${path} is unavailable`);
     assert.equal((await fetch(base + '/api/register', { method: 'POST' })).status, 405);
     return 'Server: static game, official atlas, removed APIs, private-file protection, and no session cookies passed.';

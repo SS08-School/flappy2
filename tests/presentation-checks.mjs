@@ -32,7 +32,7 @@ export function checkPresentation() {
 const birdCommand=c=>c.elements.get('game').context.commands.find(p=>p.kind==='image'&&p.args[2]===34&&p.args[3]===24);
 const palette={yellow:[[6,982],[62,982],[118,982]],blue:[[174,982],[230,658],[230,710]],red:[[230,762],[230,814],[230,866]]};
 const colorOf=c=>Object.keys(palette).find(color=>palette[color].some(([x,y])=>{const p=birdCommand(c);return p.args[0]===x&&p.args[1]===y;}));
-const backgroundOf=c=>c.elements.get('game').context.commands.find(p=>p.kind==='image'&&p.args[2]===288&&p.args[3]===512).args[0];
+const backgroundOf=c=>c.elements.get('game').context.commands.find(p=>p.kind==='image'&&p.args[3]===512&&p.args[4]===0).args[0];
 export async function checkBirdVariants(){
   for(const [menu,color] of Object.keys(palette).entries())for(const [run,runColor] of Object.keys(palette).entries())for(const night of [false,true]){
     const values=[(menu+.5)/3,(run+.5)/3,night?.75:.25];let draws=0;

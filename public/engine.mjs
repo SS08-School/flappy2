@@ -1,57 +1,46 @@
 // Native-pixel measurements from the supplied v1.3 gameplay reference.
-import { FINAL_TEST_SCORE, FINAL_PIPE_SPEED, FinalDirector, createFinalChunk, pipePose, finalPipeHits, pipeBounds, pipeScoreX, fitFloorVisibility, chunkOpening } from './difficulty.mjs';
+import { LEVEL3_TEST_SCORE, LEVEL3_PIPE_SPEED, Level3Director, createLevel3Chunk, pipePose, level3PipeHits, pipeBounds, pipeScoreX } from './difficulty.mjs';
 export const METRICS = { width: 288, height: 384, maxAspectRatio: 16 / 10, groundHeight: 48, birdWidth: 34, birdHeight: 24, pipeWidth: 52 };
 const birdX = width => 90 + (width - METRICS.width) * .3;
 const maxWorldWidth = METRICS.height * METRICS.maxAspectRatio;
 export const PHYSICS = { speed: 120, spacing: 156, gap: 100, gravity: 1100, flap: -330, firstPipeDistance: maxWorldWidth - birdX(maxWorldWidth), step: 1 / 60 };
 
 export function viewportLayout(width, height) {
-  const scale = Math.min(Math.max(1, width) / METRICS.width, Math.max(1, height) / METRICS.height);
-  return { scale, width: width / scale, height: height / scale };
+  const pixelsWide=Math.max(1,Math.min(width,height*METRICS.maxAspectRatio));
+  const pixelsHigh=Math.max(1,Math.min(height,width*METRICS.maxAspectRatio));
+  const scale=pixelsHigh/METRICS.height;
+  return {scale,width:pixelsWide/scale,height:METRICS.height,pixelsWide,pixelsHigh};
 }
 
 export class Game {
   constructor({ width = METRICS.width, height = METRICS.height, random = Math.random, onEvent = () => {} } = {}) {
-    this.width = width; this.height = height; this.random = random; this.onEvent = onEvent;
+    this.width = Math.max(METRICS.height/METRICS.maxAspectRatio,Math.min(maxWorldWidth,width)); this.height = METRICS.height; this.random = random; this.onEvent = onEvent;
     this.reset();
   }
   get ground() { return this.height - METRICS.groundHeight; }
   get pipeStartX() { return this.bird.x + PHYSICS.firstPipeDistance; }
-  get speed() { return this.difficulty === 'final' ? FINAL_PIPE_SPEED : PHYSICS.speed; }
+  get speed() { return this.difficulty === 3 ? LEVEL3_PIPE_SPEED : PHYSICS.speed; }
   reset() {
     this.state = 'ready'; this.score = 0; this.distance = 0; this.elapsed = 0; this.accumulator = 0;
-    this.bird = { x: birdX(this.width), y: 188 + (this.height - METRICS.height) / 2, vy: 0, radius: 12 };
+    this.bird = { x: birdX(this.width), y: 188, vy: 0, radius: 12 };
     this.pipes = [];
     this.nextPipeAt = 0;
     this.difficulty = 1; this.chunkSerial = 0; this.lastChunkKind = null;
-    this.classicSpawned = 0; this.finalQueued = false; this.nextChunkX = null;
+    this.classicSpawned = 0; this.level3Queued = false; this.nextChunkX = null;
     this.lastExitCenter = null; this.lastExitPort = null;
-    this.finalDirector = null;
+    this.level3Director = null;
   }
   resize(width, height) {
-    const oldGround = this.ground, oldX = this.bird.x;
-    this.width = width; this.height = height;
-    this.bird.x = birdX(width);
-    this.bird.y = Math.max(12, Math.min(this.ground - 12, this.bird.y / oldGround * this.ground));
-    const shift = this.bird.x - oldX;
-    if (this.nextChunkX !== null) this.nextChunkX += shift;
-    if (this.lastExitCenter !== null) this.lastExitCenter += (this.ground - oldGround) / 2;
-    if(this.lastExitPort)for(const key of ['top','bottom','center'])this.lastExitPort[key]+=(this.ground-oldGround)/2;
-    for (const pipe of this.pipes) {
-      pipe.x += shift;
-      pipe.center = Math.max(pipe.gap / 2 + 30, Math.min(this.ground - pipe.gap / 2 - 30, pipe.center / oldGround * this.ground));
-      if (pipe.level === 'final') {
-        pipe.verticalOffset = (this.ground - 336) / 2 - 64 + pipe.layoutOffset;
-        pipe.referenceBirdX += shift;
-        Object.assign(pipe, pipePose(pipe));
-      }
-    }
-    fitFloorVisibility(this.pipes,this.ground);
-    for(const pipe of this.pipes)if(pipe.level==='final')Object.assign(pipe,pipePose(pipe));
-    const tail=this.pipes.filter(p=>p.level==='final'&&p.chunkId===this.chunkSerial-1);
-    if(tail.length&&this.nextChunkX!==null){
-      this.lastExitPort=chunkOpening(tail,this.nextChunkX-12,this.ground,Math.max(50,Math.min(this.ground-50,this.lastExitCenter??this.ground/2)));
-      this.lastExitCenter=this.lastExitPort.center;
+    // Only the horizontal camera framing changes with device shape.
+    // Keep every vertical position, collision opening and rail unchanged.
+    const oldX=this.bird.x;
+    this.width=Math.max(METRICS.height/METRICS.maxAspectRatio,Math.min(maxWorldWidth,width));
+    this.bird.x=birdX(this.width);
+    const shift=this.bird.x-oldX;
+    if(this.nextChunkX!==null)this.nextChunkX+=shift;
+    for(const pipe of this.pipes){
+      pipe.x+=shift;
+      if(pipe.level===3){pipe.referenceBirdX+=shift;Object.assign(pipe,pipePose(pipe));}
     }
   }
   presentation() {
@@ -70,16 +59,16 @@ export class Game {
     this.pipes.push({ x, center, gap: PHYSICS.gap, width: METRICS.pipeWidth, scored: false, level: 1 });
     this.classicSpawned++;
   }
-  appendFinalChunk() {
+  appendLevel3Chunk() {
     const last = this.pipes.at(-1);
     const id = this.chunkSerial++;
-    this.finalDirector ||= new FinalDirector(this.random);
-    const chunk = createFinalChunk({
+    this.level3Director ||= new Level3Director(this.random);
+    const chunk = createLevel3Chunk({
       x: this.nextChunkX ?? Math.max(this.pipeStartX, last ? last.x + PHYSICS.spacing : this.pipeStartX),
       ground: this.ground, entryCenter: this.lastExitCenter ?? last?.center ?? this.ground / 2,
       entryPort: this.lastExitPort,
       previousKind: this.lastChunkKind, id, random: this.random, width: METRICS.pipeWidth,
-      kind: this.finalDirector.next(id),
+      kind: this.level3Director.next(id),
       referenceBirdX: this.bird.x,
     });
     this.pipes.push(...chunk.pipes); this.lastChunkKind = chunk.kind;
@@ -87,13 +76,13 @@ export class Game {
     this.lastExitCenter = chunk.exitCenter;
     this.lastExitPort = chunk.exitPort;
   }
-  activateFinal() {
-    if (this.difficulty === 'final' || this.score < FINAL_TEST_SCORE) return;
-    this.difficulty = 'final';
-    // Final's first chunk is already queued after the fifth classic pair.
+  activateLevel3() {
+    if (this.difficulty === 3 || this.score < LEVEL3_TEST_SCORE) return;
+    this.difficulty = 3;
+    // Level 3's first chunk is already queued after the fifth classic pair.
     // Switching levels changes no positions and inserts no transition gap.
-    if (!this.finalQueued) { this.finalQueued = true; this.appendFinalChunk(); }
-    this.onEvent('difficulty', { level: 'final' });
+    if (!this.level3Queued) { this.level3Queued = true; this.appendLevel3Chunk(); }
+    this.onEvent('difficulty', { level: 3 });
   }
   start() { this.reset(); this.state = 'playing'; this.spawnPipe(this.pipeStartX); this.flap(); }
   flap() {
@@ -134,15 +123,15 @@ export class Game {
     if (this.state === 'playing') {
       const delta = this.speed * dt;
       this.distance += delta; this.elapsed += dt;
-      this.activateFinal();
+      this.activateLevel3();
       if (this.nextChunkX !== null) this.nextChunkX -= delta;
       for (const pipe of this.pipes) {
         pipe.x -= delta;
-        if (pipe.level === 'final') { pipe.referenceBirdX = this.bird.x; Object.assign(pipe, pipePose(pipe)); }
+        if (pipe.level === 3) { pipe.referenceBirdX = this.bird.x; Object.assign(pipe, pipePose(pipe)); }
       }
-      while (!this.finalQueued && this.elapsed + 1e-10 >= this.nextPipeAt) {
-        if (this.classicSpawned >= FINAL_TEST_SCORE) {
-          this.finalQueued = true; this.appendFinalChunk(); break;
+      while (!this.level3Queued && this.elapsed + 1e-10 >= this.nextPipeAt) {
+        if (this.classicSpawned >= LEVEL3_TEST_SCORE) {
+          this.level3Queued = true; this.appendLevel3Chunk(); break;
         }
         // Queue the following pipe a full spacing beyond the shared start
         // edge, before it can enter even the widest supported viewport.
@@ -151,19 +140,19 @@ export class Game {
       }
       // Build captured chunks far enough ahead that even the angled banks
       // exist before entering the view. Prefetch never adds physical spacing.
-      while (this.finalQueued && this.nextChunkX < this.pipeStartX + 800) this.appendFinalChunk();
+      while (this.level3Queued && this.nextChunkX < this.pipeStartX + 800) this.appendLevel3Chunk();
       for (const pipe of this.pipes) {
         const r = this.bird.radius;
-        const collision = pipe.level === 'final' ? finalPipeHits(pipe, this.bird, this.ground)
+        const collision = pipe.level === 3 ? level3PipeHits(pipe, this.bird, this.ground)
           : this.bird.x + r > pipe.x && this.bird.x - r < pipe.x + pipe.width && (this.bird.y - r < pipe.center - pipe.gap / 2 || this.bird.y + r > pipe.center + pipe.gap / 2);
         if (collision) {
           this.hit(); break;
         }
-        if (!pipe.scored && (pipe.level === 'final' ? pipeScoreX(pipe) : pipe.x + pipe.width / 4) < this.bird.x) {
-          pipe.scored = true; this.score++; this.activateFinal(); this.onEvent('score', { score: this.score });
+        if (!pipe.scored && (pipe.level === 3 ? pipeScoreX(pipe) : pipe.x + pipe.width / 4) < this.bird.x) {
+          pipe.scored = true; this.score++; this.activateLevel3(); this.onEvent('score', { score: this.score });
         }
       }
-      this.pipes = this.pipes.filter(pipe => pipe.level === 'final'
+      this.pipes = this.pipes.filter(pipe => pipe.level === 3
         ? pipeBounds(pipe, this.ground).maxX > 0 : pipe.x > -METRICS.pipeWidth);
     }
     if (this.bird.y + this.bird.radius >= this.ground) {

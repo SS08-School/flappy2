@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { Game,PHYSICS } from '../public/engine.mjs';
-import { FINAL_CHUNK_KINDS,FINAL_OPENING_ID,FINAL_PIPE_SPEED,FinalDirector,createFinalChunk,pipePose,pipeShaftLength,flightTarget,chunkOpening } from '../public/difficulty.mjs';
+import { LEVEL3_CHUNK_KINDS,LEVEL3_OPENING_ID,LEVEL3_PIPE_SPEED,Level3Director,createLevel3Chunk,pipePose,pipeShaftLength,flightTarget,chunkOpening } from '../public/difficulty.mjs';
 import { postVertices,clipToGround,slabRange } from '../public/pipe-safety.mjs';
-import { CAPTURED_FINAL_CHUNKS,FINAL_OPENING_CHUNK } from '../public/final-chunks.mjs';
+import { LEVEL3_CHUNKS,LEVEL3_OPENING_CHUNK } from '../public/level3-chunks.mjs';
 const seeded=seed=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
 export function sequence(kinds,ground=336,entryCenter=ground/2,random=seeded(17)){
   let x=300,entry=entryCenter,entryPort,previousKind;const chunks=[],pipes=[];
-  for(const kind of kinds){const chunk=createFinalChunk({x,ground,entryCenter:entry,entryPort,previousKind,referenceBirdX:188,kind,id:chunks.length,random});chunks.push(chunk);pipes.push(...chunk.pipes);x=chunk.nextX;entry=chunk.exitCenter;entryPort=chunk.exitPort;previousKind=kind;}
+  for(const kind of kinds){const chunk=createLevel3Chunk({x,ground,entryCenter:entry,entryPort,previousKind,referenceBirdX:188,kind,id:chunks.length,random});chunks.push(chunk);pipes.push(...chunk.pipes);x=chunk.nextX;entry=chunk.exitCenter;entryPort=chunk.exitPort;previousKind=kind;}
   return {chunks,pipes,ground,entryCenter};
 }
 function targetAt(chunks,x,clockX=x){
@@ -24,10 +24,10 @@ function sharedHandoff(left,right,ground){
 export function flyPassage(scene,{minFlapInterval=.2,safetyMargin=0}={}){
   const start=scene.chunks[0].startX-140,dt=PHYSICS.step;
   const minFlapFrames=Math.ceil(minFlapInterval/dt);
-  const total=Math.ceil((scene.chunks.at(-1).nextX-start)/(FINAL_PIPE_SPEED*dt));
+  const total=Math.ceil((scene.chunks.at(-1).nextX-start)/(LEVEL3_PIPE_SPEED*dt));
   const limits=[],targets=[];
   for(let frame=0;frame<=total+3;frame++){
-    const x=start+frame*FINAL_PIPE_SPEED*dt;let top=12,bottom=scene.ground-12;
+    const x=start+frame*LEVEL3_PIPE_SPEED*dt;let top=12,bottom=scene.ground-12;
     for(const pipe of scene.pipes){
       if(x<pipe.x-120||x>pipe.x+scene.ground+300)continue;
       pipe.referenceBirdX=x;const pose=pipePose(pipe);
@@ -57,7 +57,7 @@ export function flyPassage(scene,{minFlapInterval=.2,safetyMargin=0}={}){
       if(!candidates.has(key)||candidates.get(key).cost>cost)candidates.set(key,{y,vy,age,flaps,cost});
     }
     beam=[...candidates.values()].sort((a,b)=>a.cost-b.cost).slice(0,64);
-    if(!beam.length)return {ok:false,time:frame*dt,x:start+frame*FINAL_PIPE_SPEED*dt,reason:'no viable input sequence'};
+    if(!beam.length)return {ok:false,time:frame*dt,x:start+frame*LEVEL3_PIPE_SPEED*dt,reason:'no viable input sequence'};
   }
   return {ok:true,time:total*dt,flaps:beam[0].flaps};
 }
@@ -83,9 +83,9 @@ function distance(a,b){
   return minimum;
 }
 export function checkPassages(){
-  const kinds=[FINAL_OPENING_ID,...FINAL_CHUNK_KINDS];let joins=0;
-  for(const left of kinds)for(const right of FINAL_CHUNK_KINDS){
-    const a=left===FINAL_OPENING_ID?FINAL_OPENING_CHUNK:CAPTURED_FINAL_CHUNKS.find(c=>c.id===left),b=CAPTURED_FINAL_CHUNKS.find(c=>c.id===right);
+  const kinds=[LEVEL3_OPENING_ID,...LEVEL3_CHUNK_KINDS];let joins=0;
+  for(const left of kinds)for(const right of LEVEL3_CHUNK_KINDS){
+    const a=left===LEVEL3_OPENING_ID?LEVEL3_OPENING_CHUNK:LEVEL3_CHUNKS.find(c=>c.id===left),b=LEVEL3_CHUNKS.find(c=>c.id===right);
     // The director excludes repeats and adjacent matching normal motifs;
     // consecutive rare long sections cannot occur in its schedule either.
     if(left===right||a.rare&&b.rare||!b.rare&&(a.family===b.family||a.motif&&a.motif===b.motif))continue;
@@ -119,22 +119,22 @@ export function checkPassages(){
     joins++;
   }
   for(let seed=1;seed<=12;seed++){
-    const random=seeded(seed),director=new FinalDirector(random),order=[director.next(0)];let previousKind=FINAL_OPENING_ID;
+    const random=seeded(seed),director=new Level3Director(random),order=[director.next(0)];let previousKind=LEVEL3_OPENING_ID;
     for(let i=0;i<24;i++){
-      const chunk=createFinalChunk({x:300,ground:336,random,previousKind,kind:director.next(i+1)});order.push(chunk.kind);previousKind=chunk.kind;
+      const chunk=createLevel3Chunk({x:300,ground:336,random,previousKind,kind:director.next(i+1)});order.push(chunk.kind);previousKind=chunk.kind;
     }
     for(const ground of [336,575]){const result=flyPassage(sequence(order,ground,ground/2,seeded(seed)));assert.ok(result.ok,'seed '+seed+', ground '+ground+': '+JSON.stringify(result));}
   }
   // Reproduce the reported closing-floor -> rising-trio handoff in the actual
   // engine queue. Core movement stays unchanged; visible gates connect heights.
   const game=new Game({width:614.4,height:384,random:()=>.1});
-  game.difficulty='final';game.finalQueued=true;game.nextChunkX=300;game.lastExitCenter=168;
-  game.finalDirector={next:id=>id?'rising-trio':'rising-floor-interlude'};
-  game.appendFinalChunk();const outgoing=game.pipes.slice(),port={...game.lastExitPort},start=game.nextChunkX;
-  game.appendFinalChunk();const incoming=game.pipes.filter(p=>p.chunkId===1),bridges=incoming.filter(p=>p.connector),core=incoming.filter(p=>!p.connector);
+  game.difficulty=3;game.level3Queued=true;game.nextChunkX=300;game.lastExitCenter=168;
+  game.level3Director={next:id=>id?'rising-trio':'rising-floor-interlude'};
+  game.appendLevel3Chunk();const outgoing=game.pipes.slice(),port={...game.lastExitPort},start=game.nextChunkX;
+  game.appendLevel3Chunk();const incoming=game.pipes.filter(p=>p.chunkId===1),bridges=incoming.filter(p=>p.connector),core=incoming.filter(p=>!p.connector);
   assert.equal(bridges.length,2,'two ordinary gates visibly join the high closing gap to the rising trio');
   assert.ok(sharedHandoff({pipes:outgoing,exitCenter:port.center},{pipes:incoming,startX:start},336)>=80);
-  const bare=createFinalChunk({x:start,ground:336,entryCenter:port.center,referenceBirdX:188,kind:'rising-trio',random:()=>.1});
+  const bare=createLevel3Chunk({x:start,ground:336,entryCenter:port.center,referenceBirdX:188,kind:'rising-trio',random:()=>.1});
   assert.ok(sharedHandoff({pipes:outgoing,exitCenter:port.center},bare,336)<56,'regression reproduces the former pinched handoff');
   for(let i=0;i<core.length;i++){
     assert.deepEqual(core[i].motion,bare.corePipes[i].motion,'joining chunks does not change recorded movement');
@@ -143,17 +143,17 @@ export function checkPassages(){
   game.resize(288,623);
   assert.ok(game.lastExitPort.center>=game.lastExitPort.top&&game.lastExitPort.center<=game.lastExitPort.bottom,'resize recomputes the queued exit from actual geometry');
   const resizedLeft=game.pipes.filter(p=>p.chunkId===0),resizedRight=game.pipes.filter(p=>p.chunkId===1);
-  assert.ok(sharedHandoff({pipes:resizedLeft,exitCenter:port.center+(575-336)/2},{pipes:resizedRight,startX:resizedRight[0].x},575)>=80,'reported handoff remains aligned after resizing');
+  assert.ok(sharedHandoff({pipes:resizedLeft,exitCenter:port.center},{pipes:resizedRight,startX:resizedRight[0].x},336)>=80,'reported handoff remains aligned after resizing');
   // Include extreme entry heights and very tall views in the aperture check.
-  for(const ground of [575,960])for(const entry of [100,ground/2,ground-100])for(const left of FINAL_CHUNK_KINDS)for(const right of FINAL_CHUNK_KINDS){
-    const a=CAPTURED_FINAL_CHUNKS.find(c=>c.id===left),b=CAPTURED_FINAL_CHUNKS.find(c=>c.id===right);
+  for(const ground of [575,960])for(const entry of [100,ground/2,ground-100])for(const left of LEVEL3_CHUNK_KINDS)for(const right of LEVEL3_CHUNK_KINDS){
+    const a=LEVEL3_CHUNKS.find(c=>c.id===left),b=LEVEL3_CHUNKS.find(c=>c.id===right);
     if(left===right||a.rare&&b.rare||!b.rare&&(a.family===b.family||a.motif&&a.motif===b.motif))continue;
     const scene=sequence([left,right],ground,entry);
     assert.ok(sharedHandoff(...scene.chunks,ground)>=80-1e-7,'tall-view handoff '+left+' -> '+right+', ground '+ground+', entry '+entry);
   }
   for(const entry of [100,126,210,236]){
-    const result=flyPassage(sequence([FINAL_OPENING_ID,'rising-trio','stationary-tunnel'],336,entry));
-    assert.ok(result.ok,'classic-to-final entry '+entry+': '+JSON.stringify(result));
+    const result=flyPassage(sequence([LEVEL3_OPENING_ID,'rising-trio','stationary-tunnel'],336,entry));
+    assert.ok(result.ok,'classic-to-level-3 entry '+entry+': '+JSON.stringify(result));
   }
   for(const ground of [336,575])for(const entry of [100,ground/2,ground-100]){
     const result=flyPassage(sequence(['tunnel-plunger','stationary-tunnel'],ground,entry),{minFlapInterval:.3,safetyMargin:5});
@@ -168,14 +168,14 @@ export function checkPassages(){
   // Launch near the floor with eight pixels of extra clearance and check the
   // complete upward arc against the actual roof ahead, including its overlay.
   for(const kind of ['stationary-diagonal-tunnel','diagonal-drop-exit','high-diagonal-tunnel'])for(const ground of [336,575])for(const entry of [100,ground/2,ground-100])for(const profile of [.1,.5,.9]){
-    const chunk=createFinalChunk({x:300,ground,entryCenter:entry,kind,referenceBirdX:188,random:()=>profile});
+    const chunk=createLevel3Chunk({x:300,ground,entryCenter:entry,kind,referenceBirdX:188,random:()=>profile});
     for(let x=chunk.startX;x<chunk.endX-40;x+=4){
       const opening=chunkOpening(chunk.pipes,x,ground);
       if(opening.bottom-opening.top>180)continue;
       let y=opening.bottom-20,vy=PHYSICS.flap;
       for(let frame=1;frame<=18;frame++){
         y+=vy*PHYSICS.step+PHYSICS.gravity*PHYSICS.step**2;vy+=PHYSICS.gravity*PHYSICS.step;
-        const roof=chunkOpening(chunk.pipes,x+frame*FINAL_PIPE_SPEED*PHYSICS.step,ground).top;
+        const roof=chunkOpening(chunk.pipes,x+frame*LEVEL3_PIPE_SPEED*PHYSICS.step,ground).top;
         assert.ok(y-12-roof>=8,kind+': full flap needs roof headroom at '+x+', ground '+ground+', entry '+entry);
       }
     }

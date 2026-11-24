@@ -1,12 +1,12 @@
-import { FINAL_REFERENCE, CAPTURED_FINAL_CHUNKS, FINAL_OPENING_CHUNK } from './final-chunks.mjs';
+import { LEVEL3_REFERENCE, LEVEL3_CHUNKS, LEVEL3_OPENING_CHUNK } from './level3-chunks.mjs';
 import { fitPassage, postVertices, clipToGround, pathHeight, slabRange } from './pipe-safety.mjs';
-export const FINAL_TEST_SCORE=5;
-export const FINAL_PIPE_SPEED=FINAL_REFERENCE.speed;
-export const FINAL_CHUNK_KINDS=CAPTURED_FINAL_CHUNKS.map(chunk=>chunk.id);
-export const FINAL_OPENING_ID=FINAL_OPENING_CHUNK.id;
+export const LEVEL3_TEST_SCORE=5;
+export const LEVEL3_PIPE_SPEED=LEVEL3_REFERENCE.speed;
+export const LEVEL3_CHUNK_KINDS=LEVEL3_CHUNKS.map(chunk=>chunk.id);
+export const LEVEL3_OPENING_ID=LEVEL3_OPENING_CHUNK.id;
 export const PIPE_EXPOSURE={cap:26,ordinaryShaft:24,rapidShaft:2,ceilingMargin:12};
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
-export class FinalDirector {
+export class Level3Director {
   constructor(random=Math.random){
     this.random=random;this.nextLong=5+Math.floor(random()*3);this.recent=[];this.lastDescent=-Infinity;this.lastPlunger=-Infinity;this.lastRush=-Infinity;
     this.pendingKind=null;this.sections=0;this.lastRushSection=-Infinity;this.lastRoofSection=-Infinity;
@@ -14,24 +14,24 @@ export class FinalDirector {
   next(id){
     let kind;
     if(this.pendingKind){kind=this.pendingKind;this.pendingKind=null;}
-    else if(id===0)kind=FINAL_OPENING_ID;
+    else if(id===0)kind=LEVEL3_OPENING_ID;
     else if(id>=this.nextLong){
       this.nextLong=id+10+Math.floor(this.random()*5);kind=this.random()<.5?'long-dropping-tunnel':'long-low-tunnel';
     }else{
-      const last=CAPTURED_FINAL_CHUNKS.find(c=>c.id===this.recent.at(-1));
-      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(this.sections>=5||!['rush','plunger'].includes(c.family))&&(c.family!=='rush'||id-this.lastRush>=6&&this.sections-this.lastRushSection>=6)&&(c.motif!=='floor-bank'||this.sections-this.lastRoofSection>=7)&&(c.id!=='descending-pursuit'||id>=5&&id-this.lastDescent>=8)&&(c.id!=='tunnel-plunger'||id-this.lastPlunger>=8));
+      const last=LEVEL3_CHUNKS.find(c=>c.id===this.recent.at(-1));
+      let pool=LEVEL3_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(this.sections>=5||!['rush','plunger'].includes(c.family))&&(c.family!=='rush'||id-this.lastRush>=6&&this.sections-this.lastRushSection>=6)&&(c.motif!=='floor-bank'||this.sections-this.lastRoofSection>=7)&&(c.id!=='descending-pursuit'||id>=5&&id-this.lastDescent>=8)&&(c.id!=='tunnel-plunger'||id-this.lastPlunger>=8));
       const varied=pool.filter(c=>c.family!==last?.family);if(varied.length)pool=varied;
-      const motifs=this.recent.map(k=>CAPTURED_FINAL_CHUNKS.find(c=>c.id===k)?.motif);
+      const motifs=this.recent.map(k=>LEVEL3_CHUNKS.find(c=>c.id===k)?.motif);
       const different=pool.filter(c=>!c.motif||!motifs.includes(c.motif));if(different.length)pool=different;
       kind=pool[Math.min(pool.length-1,Math.floor(this.random()*pool.length))].id;
     }
-    if(CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind)?.family==='rush'&&!this.recent.includes('rising-floor-interlude')&&this.random()<.3){
+    if(LEVEL3_CHUNKS.find(c=>c.id===kind)?.family==='rush'&&!this.recent.includes('rising-floor-interlude')&&this.random()<.3){
       this.pendingKind=kind;kind='rising-floor-interlude';
     }
     if(kind==='descending-pursuit')this.lastDescent=id;
     if(kind==='tunnel-plunger')this.lastPlunger=id;
-    if(CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind)?.family==='rush'){this.lastRush=id;this.lastRushSection=this.sections;}
-    if(CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind)?.motif==='floor-bank')this.lastRoofSection=this.sections;
+    if(LEVEL3_CHUNKS.find(c=>c.id===kind)?.family==='rush'){this.lastRush=id;this.lastRushSection=this.sections;}
+    if(LEVEL3_CHUNKS.find(c=>c.id===kind)?.motif==='floor-bank')this.lastRoofSection=this.sections;
     if(kind!=='rising-floor-interlude')this.sections++;
     this.recent.push(kind);if(this.recent.length>5)this.recent.shift();
     return kind;
@@ -52,23 +52,23 @@ export function railPosition(time,motion){
   return motion.from+Math.sign(motion.to-motion.from)*travel;
 }
 function rushPosition(time,motion,width){
-  const lead=(motion.trigger+width/2)/FINAL_PIPE_SPEED;
-  const holdStart=-motion.speed*lead/(FINAL_PIPE_SPEED+motion.speed),hold=motion.hold||0;
+  const lead=(motion.trigger+width/2)/LEVEL3_PIPE_SPEED;
+  const holdStart=-motion.speed*lead/(LEVEL3_PIPE_SPEED+motion.speed),hold=motion.hold||0;
   if(!hold||time<holdStart)return -Math.max(0,(time+lead)*motion.speed);
   const start=-(holdStart+lead)*motion.speed;
-  return start+Math.min(time-holdStart,hold)*FINAL_PIPE_SPEED;
+  return start+Math.min(time-holdStart,hold)*LEVEL3_PIPE_SPEED;
 }
 export function pipeMotion(pipe,xOffset=0,part){
   const motion=(part&&(pipe[part+'FittedMotion']||pipe[part+'Motion']))||pipe.fittedMotion||pipe.motion;
   if(!motion)return {x:0,y:0};
   const clockX=motion.type==='rush'?pipe.x:pipe.x-pipe.chunkOffset;
-  const time=(pipe.referenceBirdX-clockX-xOffset-pipe.width/2)/FINAL_PIPE_SPEED;
+  const time=(pipe.referenceBirdX-clockX-xOffset-pipe.width/2)/LEVEL3_PIPE_SPEED;
   if(motion.type==='rush'){
     // The fixed maximum-view approach is relative to the bird, not the screen
     // center. Extra travel starts offscreen, so a visible gate is already moving.
     let previousRight=-Infinity,previousCenter,left;
     for(const ahead of [...(pipe.rushAhead||[]),{distance:0,motion,width:pipe.width,center:(pipe.topRecord[1]+pipe.bottomRecord[1])/2}]){
-      const at=pipe.x-ahead.distance,clock=(pipe.referenceBirdX-at-xOffset-ahead.width/2)/FINAL_PIPE_SPEED;
+      const at=pipe.x-ahead.distance,clock=(pipe.referenceBirdX-at-xOffset-ahead.width/2)/LEVEL3_PIPE_SPEED;
       const clearance=previousCenter===undefined?0:24+Math.abs(ahead.center-previousCenter)*.8;
       left=Math.max(at+rushPosition(clock,ahead.motion,ahead.width),previousRight+clearance);
       previousRight=left+ahead.width;previousCenter=ahead.center;
@@ -87,7 +87,7 @@ export function pipeMotion(pipe,xOffset=0,part){
   return {x:motion.alongShaft?-Math.tan(angle)*y:0,y};
 }
 export function pipePose(pipe,xOffset=0){
-  if(pipe.level!=='final')return {center:pipe.center,angle:0};
+  if(pipe.level!==3)return {center:pipe.center,angle:0};
   const upper=pipeMotion(pipe,xOffset,'top'),lower=pipeMotion(pipe,xOffset,'bottom');
   const pairedLift=pipe.pairedLift||0;
   const retraction=(pipe.upperRetraction||0)-(pipe.roofExtension||0);
@@ -104,11 +104,11 @@ function basePose(pipe){
 export function fitFloorVisibility(pipes,ground){
   const groups=new Map();
   for(const pipe of pipes){
-    if(pipe.level!=='final')continue;
+    if(pipe.level!==3)continue;
     pipe.floorLift=0;pipe.pairedLift=0;pipe.pairedDrop=0;pipe.capRoofLift=0;pipe.motionRoofLift=0;pipe.roofExtension=0;pipe.fittedMotion=undefined;pipe.bottomFittedMotion=undefined;
   }
   for(const pipe of pipes){
-    if(pipe.level!=='final')continue;
+    if(pipe.level!==3)continue;
     const post=basePose(pipe).bottom,motion=pipe.bottomMotion||pipe.motion;
     const amplitude=motionRange(motion)[1];
     const shaft=pipe.minimumShaft??(pipe.lowDip?PIPE_EXPOSURE.rapidShaft:PIPE_EXPOSURE.ordinaryShaft);
@@ -138,7 +138,7 @@ export function fitFloorVisibility(pipes,ground){
       else{pipe.floorLift=lift;pipe.bottomFittedMotion=fitted;}
     }
   }
-  for(const pipe of pipes)if(pipe.level==='final'&&pipe.topRecord[2]===0&&pipe.bottomRecord[2]===0){
+  for(const pipe of pipes)if(pipe.level===3&&pipe.topRecord[2]===0&&pipe.bottomRecord[2]===0){
     const pose=basePose(pipe);
     // Raising a submerged static floor must not shrink a normal gate below
     // the original game's 100-pixel opening. Lift its roof only if needed.
@@ -162,7 +162,7 @@ export function fitFloorVisibility(pipes,ground){
     }
     bank.forEach((pipe,i)=>{pipe.motionRoofLift=lift;pipe.referenceBirdX=saved[i];});
   }
-  for(const pipe of pipes)if(pipe.level==='final'&&!pipe.noTop){
+  for(const pipe of pipes)if(pipe.level===3&&!pipe.noTop){
     const post=basePose(pipe).top,motion=pipe.topMotion||pipe.motion;
     const capDepth=pipe.width/2*Math.abs(Math.sin(post.angle))+PIPE_EXPOSURE.cap*Math.cos(post.angle);
     pipe.roofExtension=Math.max(0,PIPE_EXPOSURE.ceilingMargin+capDepth-post.y-motionRange(motion)[0]);
@@ -200,7 +200,7 @@ export function pipeBounds(pipe,ground,xOffset=0){
 }
 export function pipeHorizontalExtent(pipe,ground){const b=pipeBounds(pipe,ground),center=pipe.x+pipe.width/2;return Math.max(center-b.minX,b.maxX-center);}
 export function pipeScoreX(pipe){return pipe.x+pipe.width/4+(pipe.motion?.type==='rush'?pipePose(pipe).top.x:0);}
-export function finalPipeHits(pipe,bird,ground){
+export function level3PipeHits(pipe,bird,ground){
   const pose=pipePose(pipe);
   return [[pose.top,true],[pose.bottom,false]].some(([post,up])=>{
     if(up&&pipe.noTop)return false;
@@ -246,7 +246,7 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   for(let i=0;i<count;i++){
     const center=clamp(incoming.center+(arrival.center-incoming.center)*(i+1)/(count+1),100,ground-112);
     const native=center-(ground-336)/2,dx=i*78;
-    const pipe={x:chunk.startX+dx,chunkOffset:dx,width,gap:124,level:'final',kind:chunk.kind,chunkId:id,connector:true,scored:false,
+    const pipe={x:chunk.startX+dx,chunkOffset:dx,width,gap:124,level:3,kind:chunk.kind,chunkId:id,connector:true,scored:false,
       topRecord:[0,native-62+64,0],bottomRecord:[0,native+62+64,0],layoutOffset:0,verticalOffset:(ground-336)/2-64,
       safetyGroup:-i-1,shaftGap:3,referenceBirdX};
     Object.assign(pipe,pipePose(pipe));connectors.push(pipe);
@@ -263,13 +263,13 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   chunk.connectors=connectors;
   return chunk;
 }
-export function createFinalChunk({x,ground,entryCenter,entryPort,random=Math.random,previousKind,id=0,width=52,referenceBirdX=188,kind}){
-  const previous=CAPTURED_FINAL_CHUNKS.find(c=>c.id===previousKind);
-  let choices=CAPTURED_FINAL_CHUNKS.filter(c=>c.id!==previousKind&&!c.rare);
+export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.random,previousKind,id=0,width=52,referenceBirdX=188,kind}){
+  const previous=LEVEL3_CHUNKS.find(c=>c.id===previousKind);
+  let choices=LEVEL3_CHUNKS.filter(c=>c.id!==previousKind&&!c.rare);
   // Never concatenate dense slices into an endless tunnel.
   const dense=family=>['tunnel','rising','diagonal'].includes(family);
   if(dense(previous?.family))choices=choices.filter(c=>c.family!==previous.family);
-  const source=kind===FINAL_OPENING_ID?FINAL_OPENING_CHUNK:kind?CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind):choices[Math.min(choices.length-1,Math.floor(random()*choices.length))];
+  const source=kind===LEVEL3_OPENING_ID?LEVEL3_OPENING_CHUNK:kind?LEVEL3_CHUNKS.find(c=>c.id===kind):choices[Math.min(choices.length-1,Math.floor(random()*choices.length))];
   const layout=source.layout?source.layout(random):source.pairs;
   const amplitude=Math.max(...layout.flatMap(p=>[p.motion?.amplitude||0,p.topMotion?.amplitude||0,p.bottomMotion?.amplitude||0]));
   const nominalCenter=(source.anchor??168)+(ground-336)/2;
@@ -278,7 +278,7 @@ export function createFinalChunk({x,ground,entryCenter,entryPort,random=Math.ran
   const pipes=layout.map(pair=>{
     const dx=pair.dx+(source.entryInset||0);
     const ownLayoutOffset=pair.anchorEntry===false?0:layoutOffset;
-    const pipe={x:x+dx,chunkOffset:dx,width,gap:pair.bottom[1]-pair.top[1],level:'final',kind:source.id,chunkId:id,scored:false,
+    const pipe={x:x+dx,chunkOffset:dx,width,gap:pair.bottom[1]-pair.top[1],level:3,kind:source.id,chunkId:id,scored:false,
       topRecord:[...pair.top],bottomRecord:[...pair.bottom],motion:pair.motion,topMotion:pair.topMotion,bottomMotion:pair.bottomMotion,
       safetyGroup:pair.safetyGroup||0,minimumShaft:pair.minimumShaft,noTop:pair.noTop||false,roofGroup:pair.roofGroup,alignedRoof:source.alignedRoof||false,risingFloor:pair.risingFloor||false,minimumGap:pair.minimumGap,approachCeiling:pair.approachCeiling,lowDip:pair.lowDip||false,allowRoofOverlap:pair.allowRoofOverlap||false,arrivalClearance:source.motif==='floor-bank',shaftGap:source.diagonal?2:3,verticalOffset:verticalOffset-layoutOffset+ownLayoutOffset,layoutOffset:ownLayoutOffset,referenceBirdX};
     return Object.assign(pipe,pipePose(pipe));

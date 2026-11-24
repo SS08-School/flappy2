@@ -82,14 +82,15 @@ function paintControls() {
 }
 function resize() {
   const rect = $('game-frame').getBoundingClientRect(), next = viewportLayout(rect.width, rect.height);
-  if (view && view.pixelsWide === rect.width && view.pixelsHigh === rect.height && view.dpr === Math.min(devicePixelRatio || 1, 3)) return;
-  view = { ...next, dpr: Math.min(devicePixelRatio || 1, 3), pixelsWide: rect.width, pixelsHigh: rect.height };
-  canvas.width = Math.round(rect.width * view.dpr); canvas.height = Math.round(rect.height * view.dpr);
+  if (view && view.frameWidth === rect.width && view.frameHeight === rect.height && view.dpr === Math.min(devicePixelRatio || 1, 3)) return;
+  view = { ...next, dpr: Math.min(devicePixelRatio || 1, 3), frameWidth: rect.width, frameHeight: rect.height };
+  canvas.width = Math.round(view.pixelsWide * view.dpr); canvas.height = Math.round(view.pixelsHigh * view.dpr);
   game.resize(view.width, view.height);
   ui.style.width = `${view.width}px`; ui.style.height = `${view.height}px`; ui.style.transform = `scale(${view.scale})`;
   // UI shadows sit behind the foreground ground strip, as in the reference.
   ui.style.clipPath = `inset(0px 0px ${METRICS.groundHeight}px 0px)`;
   ui.style.setProperty('--buttons-y', `${game.ground - 60}px`);
+  ui.style.setProperty('--buttons-gap', `${Math.max(8,Math.min(16,game.width-232))}px`);
   ui.style.setProperty('--rate-x', `${(game.width - METRICS.width) / 2 + 107}px`);
   ui.style.setProperty('--rate-y', `${(game.height - METRICS.height) / 2 + 207}px`);
   paintControls();
@@ -145,6 +146,9 @@ document.addEventListener('keydown', event => {
 document.addEventListener('visibilitychange', () => {
   previous = performance.now(); nextFrameAt = previous;
 });
+for(const type of ['selectstart','dragstart','contextmenu','dblclick','gesturestart','gesturechange','gestureend','touchmove']){
+  document.addEventListener(type,event=>event.preventDefault(),{passive:false});
+}
 window.addEventListener('blur', () => {
   pageFocused=false;previous=performance.now();nextFrameAt=previous;
 });
@@ -231,21 +235,21 @@ function frame() {
   drawBackground(ctx, width, game.height, ground, screen === 'home' ? false : night);
   const pose = game.presentation();
   const upperOverlays=[];
-  const drawFinalPost=(pipe,post,up)=>{
+  const drawLevel3Post=(pipe,post,up)=>{
     if(up&&pipe.noTop)return;
     const length=pipeShaftLength(pipe,ground,up);
     ctx.save();ctx.translate(pipePixel(pipe.x+pose.pipeOffset+pipe.width/2+post.x),pipePixel(post.y));ctx.rotate(post.angle);
     drawPipe(ctx,-pipe.width/2,up?-length:0,pipe.width,length,up);ctx.restore();
   };
   for (const pipe of game.pipes) {
-    const bounds = pipe.level === 'final' ? pipeBounds(pipe, ground, pose.pipeOffset)
+    const bounds = pipe.level === 3 ? pipeBounds(pipe, ground, pose.pipeOffset)
       : { minX: pipe.x + pose.pipeOffset, maxX: pipe.x + pose.pipeOffset + pipe.width };
     if (bounds.maxX < 0 || bounds.minX > width) continue;
-    if (pipe.level === 'final') {
+    if (pipe.level === 3) {
       const shape = pipePose(pipe, pose.pipeOffset);
       for (const [post, up] of [[shape.top, true], [shape.bottom, false]]) {
         if(up&&pipe.allowRoofOverlap&&post.angle<0)upperOverlays.push([pipe,post]);
-        else drawFinalPost(pipe,post,up);
+        else drawLevel3Post(pipe,post,up);
       }
       continue;
     }
@@ -254,7 +258,7 @@ function frame() {
     // Hide the shaft's final pixel beneath the foreground at every scale.
     drawPipe(ctx, pipeX, pipe.center + pipe.gap / 2, pipe.width, ground - pipe.center - pipe.gap / 2 + 1);
   }
-  for(const [pipe,post] of upperOverlays)drawFinalPost(pipe,post,true);
+  for(const [pipe,post] of upperOverlays)drawLevel3Post(pipe,post,true);
   if (loaded) {
     // Actual flaps reset flapElapsed, restarting the faster official wing cycle.
     const flying = game.state === 'playing';

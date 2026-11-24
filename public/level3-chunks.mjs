@@ -1,5 +1,5 @@
 // Numeric formations from YHH2101OFfI. Artwork remains the supplied atlas only.
-export const FINAL_REFERENCE={video:'YHH2101OFfI',speed:118,width:288,ground:400,captureFps:30};
+export const LEVEL3_REFERENCE={video:'YHH2101OFfI',speed:118,width:288,ground:400,captureFps:30};
 export const PIPE_CLEARANCE=3;
 export const RUSH_APPROACH=429.48;
 const pitch=52+PIPE_CLEARANCE;
@@ -38,9 +38,13 @@ function bank(id,{continuation=false}={}){
       const group=i<3?0:i<5?1:2,bu=-182+i*54;
       const returnEnd=1.06+160/profile.lead;
       const peak=i===4?returnEnd-(tailReturn+35)/profile.tail:1.06;
-      const tx=i===0?96:292+(i-1)*54*Math.SQRT1_2,ty=i===0?72:50+(i-1)*54*Math.SQRT1_2;
-      const bx=(bu+v)*Math.SQRT1_2-3,by=(v-bu)*Math.SQRT1_2-64,dx=Math.min(tx,bx)-26;
-      return {dx,top:[tx-dx-26,ty+64,Math.PI/4],noTop:i===5,roofGroup:i?1:0,safetyGroup:group,minimumShaft:group===1?8:24,bottom:[bx-dx-26,by+64,-Math.PI/4],
+      const roofX=i===0?96:292+(i-1)*54*Math.SQRT1_2;
+      // The fixed exit floor also carries the intermediate roof shaft that
+      // bridges the long leading roof into the four-step slope. Its separate
+      // post offset preserves the floor position and shared movement clock.
+      const tx=i===5?194:roofX,ty=i===5?61:i===0?72:50+(i-1)*54*Math.SQRT1_2;
+      const bx=(bu+v)*Math.SQRT1_2-3,by=(v-bu)*Math.SQRT1_2-64,dx=Math.min(roofX,bx)-26;
+      return {dx,top:[tx-dx-26,ty+64,Math.PI/4],roofGroup:i===5?2:i?1:0,safetyGroup:group,minimumShaft:group===1?8:24,bottom:[bx-dx-26,by+64,-Math.PI/4],
         bottomMotion:group===2?undefined:group===1?{type:'bank',from:125,to:-35,speed:profile.pair,start:peak-160/profile.pair,returnSpeed:i===4?profile.tail:profile.lead,
           returnTo:i===4?tailReturn:125,alongShaft:true,group}
           :{type:'sweep',from:45,to:-20,speed:65/(trioEnd-trioStart),start:trioStart,alongShaft:true,group},
@@ -94,7 +98,7 @@ function rushGates(short=false){
     if(!short){
       // A slower final approach needs extra room before the fast follower
       // catches the bird. Reserve that room instead of clamping its hold away.
-      const world=FINAL_REFERENCE.speed,lead=(RUSH_APPROACH+26)/world;
+      const world=LEVEL3_REFERENCE.speed,lead=(RUSH_APPROACH+26)/world;
       const holdAt=-96*lead/(world+96),front=speeds[count-1];
       const separation=52+24+Math.abs(ys[count]-ys[count-1])*.8;
       const spacing=Math.max(176,Math.ceil(world*((separation-front*lead)/(world+front)-holdAt))+8);
@@ -137,10 +141,10 @@ function tunnelPlunger(){
   moving.motion={type:'plunger',from:-64,to:64,speed:210,start:(moving.dx-38)/118,returnSpeed:210,slowAt:(moving.dx+14)/118,afterSpeed:60};
   return chunk;
 }
-export const FINAL_OPENING_CHUNK=vertical('opening-moving-pair',[6,10],[168,144,202],124,156);
-FINAL_OPENING_CHUNK.family='opening';
-FINAL_OPENING_CHUNK.pairs[0].motion=rail(-50,60,50,-1);
-export const CAPTURED_FINAL_CHUNKS=[
+export const LEVEL3_OPENING_CHUNK=vertical('opening-moving-pair',[6,10],[168,144,202],124,156);
+LEVEL3_OPENING_CHUNK.family='opening';
+LEVEL3_OPENING_CHUNK.pairs[0].motion=rail(-50,60,50,-1);
+export const LEVEL3_CHUNKS=[
   vertical('stationary-tunnel',[12,14.7],[168,168,168,168,168],108),
   rising('rising-trio'),rising('rising-trio-window',true),
   descendingPursuit(),

@@ -60,11 +60,17 @@ export function drawBird(ctx, x, y, wing = 0, angle = 0, color = 'yellow') {
 export function drawBackground(ctx, width, height, ground, night = false) {
   ctx.fillStyle = night ? '#008793' : '#4ec0ca'; ctx.fillRect(0, 0, width, height);
   if (!atlas) return;
-  const s = SPRITES.day;
-  for (let x = 0; x < width; x += s.width) {
-    // The reference skyline is stationary; only the ground and pipes scroll.
-    // Tall screens gain sky; wide screens gain tiles. Sprite proportions never change.
-    drawSprite(ctx, night ? 'night' : 'day', x, ground - 400);
+  const name = night ? 'night' : 'day', s = SPRITES[name];
+  ctx.imageSmoothingEnabled = false;
+  // The full 288px sprite has mismatched edges. Its columns 82..103 and
+  // 220..241 match exactly in both backgrounds, including the bushes.
+  // Keep the original left-hand view, then repeat the interior at its native
+  // 138px period. The 22px matching overlap also covers fractional raster edges.
+  // The skyline remains stationary and every source pixel keeps its proportions.
+  ctx.drawImage(atlas, s.x, s.y, 242, s.height, 0, ground - 400, 242, s.height);
+  for (let x = 220; x < width; x += 138) {
+    ctx.drawImage(atlas, s.x + 82, s.y, 160, s.height,
+      x, ground - 400, 160, s.height);
   }
 }
 export function drawGround(ctx, width, ground, distance) {
