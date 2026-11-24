@@ -1,5 +1,5 @@
 // Native-pixel measurements from the supplied v1.3 gameplay reference.
-import { FINAL_TEST_SCORE, FINAL_PIPE_SPEED, FINAL_OPENING_ID, createFinalChunk, pipePose, finalPipeHits, pipeBounds, pipeScoreX } from './difficulty.mjs';
+import { FINAL_TEST_SCORE, FINAL_PIPE_SPEED, FinalDirector, createFinalChunk, pipePose, finalPipeHits, pipeBounds, pipeScoreX, fitFloorVisibility } from './difficulty.mjs';
 export const METRICS = { width: 288, height: 384, maxAspectRatio: 16 / 10, groundHeight: 48, birdWidth: 34, birdHeight: 24, pipeWidth: 52 };
 const birdX = width => 90 + (width - METRICS.width) * .3;
 const maxWorldWidth = METRICS.height * METRICS.maxAspectRatio;
@@ -26,6 +26,7 @@ export class Game {
     this.difficulty = 1; this.chunkSerial = 0; this.lastChunkKind = null;
     this.classicSpawned = 0; this.finalQueued = false; this.nextChunkX = null;
     this.lastExitCenter = null;
+    this.finalDirector = null;
   }
   resize(width, height) {
     const oldGround = this.ground, oldX = this.bird.x;
@@ -44,6 +45,8 @@ export class Game {
         Object.assign(pipe, pipePose(pipe));
       }
     }
+    fitFloorVisibility(this.pipes,this.ground);
+    for(const pipe of this.pipes)if(pipe.level==='final')Object.assign(pipe,pipePose(pipe));
   }
   presentation() {
     if (!['playing', 'falling'].includes(this.state)) return { birdY: this.bird.y, pipeOffset: 0 };
@@ -64,11 +67,12 @@ export class Game {
   appendFinalChunk() {
     const last = this.pipes.at(-1);
     const id = this.chunkSerial++;
+    this.finalDirector ||= new FinalDirector(this.random);
     const chunk = createFinalChunk({
       x: this.nextChunkX ?? Math.max(this.pipeStartX, last ? last.x + PHYSICS.spacing : this.pipeStartX),
       ground: this.ground, entryCenter: this.lastExitCenter ?? last?.center ?? this.ground / 2,
       previousKind: this.lastChunkKind, id, random: this.random, width: METRICS.pipeWidth,
-      kind: id === 0 ? FINAL_OPENING_ID : undefined,
+      kind: this.finalDirector.next(id),
       referenceBirdX: this.bird.x,
     });
     this.pipes.push(...chunk.pipes); this.lastChunkKind = chunk.kind;

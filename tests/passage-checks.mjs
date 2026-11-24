@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { PHYSICS } from '../public/engine.mjs';
-import { FINAL_CHUNK_KINDS,FINAL_OPENING_ID,FINAL_PIPE_SPEED,createFinalChunk,pipePose,pipeShaftLength,flightTarget } from '../public/difficulty.mjs';
+import { FINAL_CHUNK_KINDS,FINAL_OPENING_ID,FINAL_PIPE_SPEED,FinalDirector,createFinalChunk,pipePose,pipeShaftLength,flightTarget } from '../public/difficulty.mjs';
 import { postVertices,clipToGround,slabRange } from '../public/pipe-safety.mjs';
 const seeded=seed=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
 export function sequence(kinds,ground=336,entryCenter=ground/2){
   let x=300,entry=entryCenter;const chunks=[],pipes=[];
-  for(const kind of kinds){const chunk=createFinalChunk({x,ground,entryCenter:entry,referenceBirdX:188,kind});chunks.push(chunk);pipes.push(...chunk.pipes);x=chunk.nextX;entry=chunk.exitCenter;}
+  for(const kind of kinds){const chunk=createFinalChunk({x,ground,entryCenter:entry,referenceBirdX:188,kind,id:chunks.length});chunks.push(chunk);pipes.push(...chunk.pipes);x=chunk.nextX;entry=chunk.exitCenter;}
   return {chunks,pipes,ground,entryCenter};
 }
 function targetAt(chunks,x,clockX=x){
@@ -80,9 +80,10 @@ export function checkPassages(){
     for(const phase of [0,.25,.5,.75,1]){
       const clock=scene.chunks[0].startX+phase*700;
       scene.pipes.forEach(p=>{p.referenceBirdX=clock;});
-      const posts=scene.pipes.flatMap(p=>{const pose=pipePose(p);return [[pose.top,true],[pose.bottom,false]].map(([post,up])=>({kind:p.kind,polygon:clipToGround(postVertices(p,post,up,pipeShaftLength(p,336)),336)}));});
+      const posts=scene.pipes.flatMap(p=>{const pose=pipePose(p);return [[pose.top,true],[pose.bottom,false]].map(([post,up])=>({kind:p.kind,x:p.x,chunk:p.chunkId,up,overlap:p.allowRoofOverlap,polygon:clipToGround(postVertices(p,post,up,pipeShaftLength(p,336)),336)}));});
       for(let i=0;i<posts.length;i++)for(let j=i+1;j<posts.length;j++){
-        assert.ok(!overlap(posts[i].polygon,posts[j].polygon),left+' -> '+right+': overlapping pipe shafts');
+        if(posts[i].up&&posts[j].up&&posts[i].chunk===posts[j].chunk&&(posts[i].overlap||posts[j].overlap))continue;
+        assert.ok(!overlap(posts[i].polygon,posts[j].polygon),left+' -> '+right+': overlapping '+posts[i].kind+' '+posts[i].x+' '+posts[i].up+' / '+posts[j].kind+' '+posts[j].x+' '+posts[j].up);
         assert.ok(distance(posts[i].polygon,posts[j].polygon)>=2.9,left+' -> '+right+': pipes touch instead of leaving the small gap');
       }
     }
@@ -102,9 +103,9 @@ export function checkPassages(){
     joins++;
   }
   for(let seed=1;seed<=12;seed++){
-    const random=seeded(seed),order=[FINAL_OPENING_ID];let previousKind;
+    const random=seeded(seed),director=new FinalDirector(random),order=[director.next(0)];let previousKind=FINAL_OPENING_ID;
     for(let i=0;i<24;i++){
-      const chunk=createFinalChunk({x:300,ground:336,random,previousKind});order.push(chunk.kind);previousKind=chunk.kind;
+      const chunk=createFinalChunk({x:300,ground:336,random,previousKind,kind:director.next(i+1)});order.push(chunk.kind);previousKind=chunk.kind;
     }
     for(const ground of [336,575]){const result=flyPassage(sequence(order,ground));assert.ok(result.ok,'seed '+seed+', ground '+ground+': '+JSON.stringify(result));}
   }
@@ -112,5 +113,5 @@ export function checkPassages(){
     const result=flyPassage(sequence([FINAL_OPENING_ID,'rising-trio','reversing-gates'],336,entry));
     assert.ok(result.ok,'classic-to-final entry '+entry+': '+JSON.stringify(result));
   }
-  return 'Passages: '+joins+' ordered joins keep small gaps between pipes and remain flyable; independent floor groups, late bursts and seeded long runs pass with original gravity/flaps.';
+  return 'Passages: '+joins+' ordered joins keep usable clearances; only designated upper exits overlap. Scheduled rapid/long sections and seeded portrait/landscape flights pass with original gravity/flaps.';
 }

@@ -4,7 +4,7 @@ import { checkClient, checkGroundLoop, checkPipeAnchoring, checkBirdAnimation, c
 import { checkPresentation } from './presentation-checks.mjs';
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 import { checkScoreDigits } from './score-checks.mjs';
-import { checkDifficulty, checkFinalClient } from './difficulty-checks.mjs';
+import { checkDifficulty, checkFinalClient, checkFloorVisibility } from './difficulty-checks.mjs';
 import { checkPassages } from './passage-checks.mjs';
 test('original game rules and widescreen geometry', checkEngine);
 test('static game server', checkServer);
@@ -27,4 +27,6 @@ test('aspect-independent offscreen pipe timing', checkPipeTiming);
 test('precise input timestamps, frame stalls and refresh jitter', checkPreciseInputTiming);
 test('random final difficulty chunks and collisions', checkDifficulty);
 test('final difficulty uses only official pipe graphics', checkFinalClient);
+
+test('lower pipe caps stay fully visible above ground', checkFloorVisibility);
 test('every chunk and join has a realistically flyable passage', checkPassages);

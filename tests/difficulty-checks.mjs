@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { Game,PHYSICS } from '../public/engine.mjs';
-import { FINAL_TEST_SCORE,FINAL_PIPE_SPEED,FINAL_OPENING_ID,FINAL_CHUNK_KINDS,createFinalChunk,pipePose,pipeMotion,finalPipeHits,pipeBounds,pipeScoreX,triangle } from '../public/difficulty.mjs';
+import { FINAL_TEST_SCORE,FINAL_PIPE_SPEED,FINAL_OPENING_ID,FINAL_CHUNK_KINDS,FinalDirector,createFinalChunk,pipePose,pipeMotion,finalPipeHits,pipeBounds,pipeScoreX,triangle } from '../public/difficulty.mjs';
 import { CAPTURED_FINAL_CHUNKS } from '../public/final-chunks.mjs';
 import { createClient } from './client-checks.mjs';
 const seeded=(seed=17)=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
@@ -35,26 +35,45 @@ export function checkDifficulty(){
     const source=CAPTURED_FINAL_CHUNKS.find(c=>c.id===chunk.kind);
     assert.equal(chunk.pipes.length,source.pairs.length);
     chunk.pipes.forEach((p,j)=>{
-      assert.equal(p.width,52);assert.equal(p.x,614.4+source.pairs[j].dx+(source.entryInset||0));
+      assert.equal(p.width,52);
+      const expectedX=614.4+source.pairs[j].dx+(source.entryInset||0);
+      if(source.pairs[j].afterFloor)assert.ok(p.x>=expectedX);else assert.equal(p.x,expectedX);
       assert.deepEqual(p.topRecord,source.pairs[j].top);assert.deepEqual(p.bottomRecord,source.pairs[j].bottom);
       assert.ok(pipeBounds(p,336).minX>=614.4-1e-8);
-      assert.equal(p.upperRetraction,chunk.pipes[0].upperRetraction,'whole roof stays aligned');
-      assert.equal(p.lowerRetraction,chunk.pipes[0].lowerRetraction,'whole floor stays aligned');
+      const bank=chunk.pipes.find(q=>q.safetyGroup===p.safetyGroup);
+      assert.equal(p.upperRetraction,bank.upperRetraction,'each roof bank stays aligned');
+      assert.equal(p.lowerRetraction,bank.lowerRetraction,'each floor bank stays aligned');
     });
-    assert.ok(chunk.nextX-chunk.endX>=104-1e-7,'clear separation after visible shafts');
+    assert.ok(chunk.nextX-chunk.endX>=3-1e-7&&chunk.nextX-chunk.endX<=24+1e-7,'sections meet without large empty padding');
     previousKind=chunk.kind;previousFamily=chunk.family;
   }
-  assert.equal(seen.size,8);
+  assert.equal(seen.size,CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare).length);
+  const director=new FinalDirector(seeded()),rapid=[],long=[];
+  for(let id=0;id<120;id++){
+    const kind=director.next(id);
+    if(id===0)assert.equal(kind,FINAL_OPENING_ID);
+    if(kind?.startsWith('rapid-gates-'))rapid.push(id);
+    if(kind?.startsWith('long-'))long.push(id);
+  }
+  assert.ok(rapid.length>=10&&long.length>=6&&long.length<=12);
+  for(let i=1;i<rapid.length;i++)assert.ok(rapid[i]-rapid[i-1]>=8&&rapid[i]-rapid[i-1]<=10,'rapid sets recur every 8–10 chunks');
+  for(const count of [2,3])assert.equal(chunkOfKind('rapid-gates-'+count).pipes.length,count);
+  for(const kind of ['long-dropping-tunnel','long-low-tunnel']){
+    const tunnel=chunkOfKind(kind);
+    assert.equal(tunnel.pipes.length,9);assert.ok(tunnel.pipes.at(-1).allowRoofOverlap);
+    assert.ok(tunnel.exitCenter>tunnel.safePath[1][1]+35,'long tunnel ends through a lower opening');
+  }
   const flat=chunkOfKind('stationary-tunnel');assert.equal(flat.pipes.length,5);
   assert.equal(flat.pipes.at(-1).x-flat.pipes[0].x+52,272,'five columns with small visible gaps, not a concatenated tunnel');
   for(const p of flat.pipes){assert.equal(p.motion,undefined);assert.deepEqual(atTime(p,0),atTime(p,20));}
-  const rising=chunkOfKind('rising-trio');assert.equal(rising.pipes.length,3);
-  const initial=rising.pipes.map(p=>atTime(p,0)),later=rising.pipes.map(p=>atTime(p,1));
-  assert.ok(later.every((p,i)=>p.bottom.y<initial[i].bottom.y),'floor group rises');
-  assert.ok(later.every((p,i)=>p.top.y===initial[i].top.y),'roof stays still');
+  const rising=chunkOfKind('rising-trio');assert.equal(rising.pipes.length,5);
+  const initial=rising.pipes.slice(0,3).map(p=>atTime(p,0)),later=rising.pipes.slice(0,3).map(p=>atTime(p,1));
+  assert.ok(later.every((p,i)=>p.bottom.y<initial[i].bottom.y&&p.top.y<initial[i].top.y),'three complete pairs rise together');
+  assert.ok(pipePose(rising.pipes[3]).center>initial[0].center+30,'rising group leads directly into a low opening');
   for(const kind of ['diagonal-rise','diagonal-fall']){
-    const bank=chunkOfKind(kind);assert.equal(bank.pipes.length,4);
+    const chunk=chunkOfKind(kind),bank={pipes:chunk.pipes.slice(0,4)};
     const roof=bank.pipes.map(p=>atTime(p,0).top);
+    assert.ok(new Set(roof.map(p=>p.y)).size>=3,'fixed roof has staggered cap lengths');
     for(const p of bank.pipes){assert.equal(p.top.angle,Math.PI/4);assert.equal(p.bottom.angle,-Math.PI/4);}
     for(let time=0;time<6;time+=.13){
       const shifts=bank.pipes.map((p,i)=>{assert.deepEqual(atTime(p,time).top,roof[i],'diagonal roof never moves');return pipeMotion(p,0,'bottom').y;});
@@ -66,6 +85,7 @@ export function checkDifficulty(){
     const p=bank.pipes[0],post=pipePose(p).top;
     assert.ok(finalPipeHits(p,{x:p.x+26+post.x+Math.sin(post.angle)*4,y:post.y-Math.cos(post.angle)*4,radius:12},336));
   }
+  const connected=chunkOfKind('diagonal-fall');assert.ok(connected.pipes.at(-1).motion,'diagonal passage leads directly into a moving gate');
   const shutter=chunkOfKind('reversing-gates').pipes[0],m=shutter.motion;
   const turn=(.5-m.phase)*m.period,epsilon=.001;
   const left=(triangle(turn,m.period,m.phase)-triangle(turn-epsilon,m.period,m.phase))/epsilon;
@@ -73,20 +93,28 @@ export function checkDifficulty(){
   assert.ok(Math.abs(left-4/m.period)<1e-7&&Math.abs(right+4/m.period)<1e-7,'instant reversal, no slowdown');
   for(let t=-2;t<2;t+=.01){assert.ok(Math.abs(atTime(shutter,t).top.y-atTime(shutter,t+m.period).top.y)<1e-7);}
   const rush=chunkOfKind('left-rush-gates'),p=rush.pipes[0];
-  p.referenceBirdX=p.x-147;assert.ok(Math.abs(pipeMotion(p).x)<1e-8,'burst waits until close to the bird');
-  p.referenceBirdX=p.x-100;assert.ok(pipeMotion(p).x<0);assert.ok(pipeScoreX(p)<p.x+13,'points follow the actual moving gate');
+  p.referenceBirdX=p.x-400;assert.ok(pipeMotion(p).x<0,'extra movement is already active on approach');
+  assert.ok(pipeScoreX(p)<p.x+13,'points follow the actual moving gate');
   const contacts=[];
   for(const gate of rush.pipes){
-    const contact=(gate.motion.trigger-12)/(118+gate.motion.speed);contacts.push(contact);
-    assert.ok(contact<.4,'burst reduces the remaining reaction window below 0.4 seconds');
+    const contact=(146-12)/(118+gate.motion.speed);contacts.push(contact);
+    assert.ok(contact<(146-12)/118,'continuous approach is faster than normal travel');
     for(const width of [288,512,614.4]){
       const run=new Game({width,height:384}),birdX=run.bird.x;
-      const sample={...gate,x:birdX+146-118*contact,referenceBirdX:birdX};
+      const nominal=12+gate.motion.speed*gate.motion.trigger/118;
+      const atContact=nominal/(1+gate.motion.speed/118);
+      const sample={...gate,x:birdX+atContact,referenceBirdX:birdX};
       const leading=sample.x+pipePose(sample).top.x;
       assert.ok(Math.abs(leading-birdX-12)<1e-8,'contact timing follows actual bird position at every aspect ratio');
       const before=pipePose({...sample,x:sample.x+118*.01}).top.x;
       const after=pipePose({...sample,x:sample.x-118*.01}).top.x;
       assert.ok(Math.abs((before-after)/.02-gate.motion.speed)<1e-7,'gate remains accelerated as it reaches the bird');
+      for(const actualBird of [birdX,width/2]){
+        const edgeDistance=width-actualBird;
+        const atEdge=(edgeDistance+gate.motion.speed*gate.motion.trigger/118)/(1+gate.motion.speed/118);
+        const edge={...gate,x:actualBird+atEdge,referenceBirdX:actualBird};
+        assert.ok(pipeMotion(edge).x<0,'gate is already moving extra when it first appears, including a centered bird');
+      }
     }
   }
   assert.ok(contacts[2]<contacts[0],'the last gate has the shortest reaction window');
@@ -101,7 +129,7 @@ export function checkDifficulty(){
   const recorded=resized.pipes[0],old=pipePose(recorded),distance=recorded.x-resized.bird.x;resized.resize(288,623);
   assert.ok(Math.abs(recorded.x-resized.bird.x-distance)<1e-8);
   assert.ok(Math.abs(pipePose(recorded).top.y-old.top.y-(623-384)/2)<1e-8);
-  return 'Final: small pipe gaps, stationary roofs, distinct floor-speed groups, bird-relative late bursts with a faster final gate, accurate scoring and FPS consistency passed.';
+  return 'Final: connected formations, staggered roofs, displaced floor groups, scheduled rapid sets, rare long drop exits, continuously moving bird-relative approaches and FPS consistency passed.';
 }
 export async function checkFinalClient(){
   const c=await createClient({width:1228.8,height:768});c.controller.prepareRun();c.controller.flap();
@@ -111,4 +139,27 @@ export async function checkFinalClient(){
   assert.ok(c.images.every(path=>path==='/assets/flappy/official-v1.3.png'));
   assert.equal(c.elements.get('play-controls').hidden,true);
   return 'Final client: opposite clean pipe orientations and official artwork only passed.';
+}
+export function checkFloorVisibility(){
+  const visible=(pipe,ground)=>{
+    const pose=pipePose(pipe),post=pose.bottom,co=Math.cos(post.angle),si=Math.sin(post.angle);
+    const corners=[[-26,0],[26,0],[26,26],[-26,26]].map(([x,y])=>post.y+x*si+y*co);
+    const remaining=ground-Math.max(...corners),shaft=pipe.lowDip?2:24;
+    assert.ok(remaining>=shaft*co-1e-7,pipe.kind+': lower cap or minimum shaft is submerged');
+    if(post.angle===0&&pose.top.angle===0)assert.ok(post.y-pose.top.y>=100-1e-7,'raised floors retain at least the original gate opening');
+  };
+  for(const ground of [336,575,960])for(const entryCenter of [100,ground/2,ground-100]){
+    for(const kind of [FINAL_OPENING_ID,...FINAL_CHUNK_KINDS]){
+      const chunk=chunkOfKind(kind,{ground,entryCenter});
+      for(let time=0;time<8;time+=.037)for(const pipe of chunk.pipes){atTime(pipe,time);visible(pipe,ground);}
+    }
+  }
+  const resized=new Game({width:288,height:1008});resized.start();resized.score=5;resized.activateFinal();
+  resized.pipes=chunkOfKind('rapid-gates-3',{ground:960,entryCenter:800}).pipes;
+  resized.resize(614.4,384);
+  for(let time=0;time<3;time+=.017)for(const pipe of resized.pipes){atTime(pipe,time);visible(pipe,resized.ground);}
+  const moving=chunkOfKind('rapid-gates-3',{entryCenter:236}).pipes.at(-1),motion=moving.motion;
+  const a=atTime(moving,.01).bottom.y,b=atTime(moving,.02).bottom.y;
+  assert.ok(Math.abs(Math.abs(b-a)/.01-4*motion.amplitude/motion.period)<1e-7,'ground limit shifts the baseline without flattening the fast cycle');
+  return 'Pipe exposure: ordinary caps retain 24 native shaft pixels; rapid caps remain fully visible across complete cycles, entry heights and live portrait-to-landscape resizing.';
 }
