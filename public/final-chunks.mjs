@@ -20,14 +20,14 @@ function bank(id,{continuation=false}={}){
   // Retain the distinct rates/directions through 18–22 s. These rails keep
   // moving before and after the captured crossing: the first rises ~26 px/s
   // and the following bank descends ~72 px/s, dwelling ahead of the bird.
-  const roofV=[98,-60,-112,-108,-160,-172],floorV=[223,223,223,292,292,292];
-  const chunk={id,source:[18,23],family:'diagonal',motif:'floor-bank',diagonal:true,anchor:168,maxEntry:168,exitCenter:196,entryInset:64,clearance:3,
+  const roofV=[98,-60,-112,-108,-160],floorV=[223,223,223,292,292];
+  const chunk={id,source:[18,23],family:'diagonal',motif:'floor-bank',diagonal:true,anchor:168,minEntry:168,maxEntry:168,exitCenter:196,entryInset:64,clearance:3,
     pairs:floorV.map((v,i)=>{
       const group=i<3?0:1,tu=156.5+i*54,bu=-182+i*54;
       const tx=(tu-roofV[i])*Math.SQRT1_2-3,ty=(tu+roofV[i])*Math.SQRT1_2-64;
       const bx=(bu+v)*Math.SQRT1_2-3,by=(v-bu)*Math.SQRT1_2-64,dx=Math.min(tx,bx)-26;
       return {dx,top:[tx-dx-26,ty+64,Math.PI/4],bottom:[bx-dx-26,by+64,-Math.PI/4],
-        bottomMotion:group?rail(-35,125,72,1.06,{returnSpeed:50,alongShaft:true,group}):rail(45,-20,26,-.67,{alongShaft:true,group}),
+        bottomMotion:group?rail(-35,125,i===4?104:72,i===4?1.2:1.06,{returnSpeed:50,alongShaft:true,group}):rail(45,-20,26,-.67,{alongShaft:true,group}),
       };
     }),
   };
@@ -43,12 +43,13 @@ function diagonalTunnel(drop=false){
     const tu=125+i*54,bu=-97+i*54;
     const tx=(tu-tv)*Math.SQRT1_2-78.4888527117,ty=(tu+tv)*Math.SQRT1_2-64;
     const bx=(bu+bv)*Math.SQRT1_2-78.4888527117,by=(bv-bu)*Math.SQRT1_2-64,dx=Math.min(tx,bx);
-    const motion=[1,4].includes(i)?rail(-6,6,6,i===1?0:.8,{alongShaft:true,group:i}):undefined;
-    return {dx,top:[tx-dx,ty+64,Math.PI/4],bottom:[bx-dx,by+64,-Math.PI/4],topMotion:motion,bottomMotion:motion};
+    // One ceiling post closes the opening slowly; the remaining tunnel is rigid.
+    const motion=i===4?rail(-12,12,6,-.8,{alongShaft:true,group:i}):undefined;
+    const extension=i===5?92:0;
+    return {dx,top:[tx-dx,ty+64,Math.PI/4],bottom:[bx-dx-extension,by+64-extension,-Math.PI/4],topMotion:motion};
   });
     const floor=drop?270:278;
-    pairs.push(pair(550,178,floor,{top:[0,242,-Math.PI/4],bottom:[0,floor+64,-Math.PI/4],allowRoofOverlap:true,overlayAfter:true,anchorEntry:false,safetyGroup:10}));
-    pairs.push(pair(760,104,floor,{bottom:[0,floor+64,Math.PI/4],afterFloor:true,anchorEntry:false,safetyGroup:11}));
+    pairs.push(pair(550,178,floor,{top:[0,242,-Math.PI/4],bottom:[0,floor+64,Math.PI/4],allowRoofOverlap:true,overlayAfter:true,joinFloor:true,anchorEntry:false,safetyGroup:10}));
     return pairs;
   };
   return {id:drop?'diagonal-drop-exit':'stationary-diagonal-tunnel',source:drop?[48,53]:[48,51],family:'diagonal',motif:'angled-tunnel',diagonal:true,passageHeight:72,anchor:92,maxEntry:180,entryInset:32,clearance:3,pairs:layout(()=>.5),layout};
@@ -79,11 +80,12 @@ function longTunnel(id,low=false){
   return chunk;
 }
 function descendingPursuit(){
-  const chunk=vertical('descending-pursuit',[8,11],[164,164],140,pitch,rail(-68,68,96,.55));
+  // 32–34 s: one complete gate plunges along a straight, readable rail.
+  const chunk=vertical('descending-pursuit',[32,34],[164],116,pitch,rail(-76,76,210,.77,{returnSpeed:210}));
   chunk.family='descent';chunk.motif='descent';chunk.minEntry=156;chunk.maxEntry=180;
-  chunk.pairs.forEach(p=>p.dx+=130);
+  chunk.pairs.forEach(p=>{p.dx+=130;p.lowDip=true;});
   chunk.pairs.unshift(pair(0,80,250,{anchorEntry:false,safetyGroup:3}));
-  chunk.pairs.push(pair(240,142,286,{anchorEntry:false,safetyGroup:1}),pair(295,156,286,{anchorEntry:false,safetyGroup:2}));
+  chunk.pairs.push(pair(250,142,286,{anchorEntry:false,safetyGroup:1}),pair(305,156,286,{anchorEntry:false,safetyGroup:2}));
   return chunk;
 }
 export const FINAL_OPENING_CHUNK=vertical('opening-moving-pair',[6,10],[168,168,168],124,156);

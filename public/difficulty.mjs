@@ -4,26 +4,26 @@ export const FINAL_TEST_SCORE=5;
 export const FINAL_PIPE_SPEED=FINAL_REFERENCE.speed;
 export const FINAL_CHUNK_KINDS=CAPTURED_FINAL_CHUNKS.map(chunk=>chunk.id);
 export const FINAL_OPENING_ID=FINAL_OPENING_CHUNK.id;
-export const PIPE_EXPOSURE={cap:26,ordinaryShaft:24,rapidShaft:2};
+export const PIPE_EXPOSURE={cap:26,ordinaryShaft:24,rapidShaft:2,ceilingMargin:12};
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 export class FinalDirector {
   constructor(random=Math.random){
-    this.random=random;this.nextLong=5+Math.floor(random()*3);this.recent=[];
+    this.random=random;this.nextLong=5+Math.floor(random()*3);this.recent=[];this.lastDescent=-Infinity;
   }
   next(id){
     let kind;
     if(id===0)kind=FINAL_OPENING_ID;
-    else if(id===2)kind='descending-pursuit';
     else if(id>=this.nextLong){
       this.nextLong=id+10+Math.floor(this.random()*5);kind=this.random()<.5?'long-dropping-tunnel':'long-low-tunnel';
     }else{
       const last=CAPTURED_FINAL_CHUNKS.find(c=>c.id===this.recent.at(-1));
-      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(id>=5||c.family!=='rush')&&(id>=2||c.id!=='descending-pursuit'));
+      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(id>=5||c.family!=='rush')&&(c.id!=='descending-pursuit'||id>=5&&id-this.lastDescent>=8));
       const varied=pool.filter(c=>c.family!==last?.family);if(varied.length)pool=varied;
       const motifs=this.recent.map(k=>CAPTURED_FINAL_CHUNKS.find(c=>c.id===k)?.motif);
       const different=pool.filter(c=>!c.motif||!motifs.includes(c.motif));if(different.length)pool=different;
       kind=pool[Math.min(pool.length-1,Math.floor(this.random()*pool.length))].id;
     }
+    if(kind==='descending-pursuit')this.lastDescent=id;
     this.recent.push(kind);if(this.recent.length>5)this.recent.shift();
     return kind;
   }
@@ -56,7 +56,9 @@ export function pipeMotion(pipe,xOffset=0,part){
     if(!hold||time<holdStart)return {x:approach,y:0};
     const start=-(holdStart+lead)*motion.speed;
     if(time<holdStart+hold)return {x:start+(time-holdStart)*FINAL_PIPE_SPEED,y:0};
-    return {x:start+hold*FINAL_PIPE_SPEED-(time-holdStart-hold)*motion.speed,y:0};
+    // Release the follower into ordinary world scrolling; do not launch it
+    // left a second time once its brief screen-stationary hold has ended.
+    return {x:start+hold*FINAL_PIPE_SPEED,y:0};
   }
   const y=motion.type==='rail'?railPosition(time,motion):motion.type==='sweep'?(motion.preFrom!==undefined&&time<motion.start
     ?motion.from+Math.sign(motion.preFrom-motion.from)*clamp((motion.start-time)*motion.preSpeed,0,Math.abs(motion.preFrom-motion.from))
@@ -69,9 +71,10 @@ export function pipePose(pipe,xOffset=0){
   if(pipe.level!=='final')return {center:pipe.center,angle:0};
   const upper=pipeMotion(pipe,xOffset,'top'),lower=pipeMotion(pipe,xOffset,'bottom');
   const pairedLift=pipe.pairedLift||0;
-  const top={x:pipe.topRecord[0]+upper.x+Math.tan(pipe.topRecord[2])*(pipe.upperRetraction||0),y:pipe.topRecord[1]+pipe.verticalOffset+upper.y-(pipe.upperRetraction||0)-pairedLift-(pipe.capRoofLift||0)-(pipe.motionRoofLift||0),angle:pipe.topRecord[2]};
+  const retraction=(pipe.upperRetraction||0)-(pipe.roofExtension||0);
+  const top={x:pipe.topRecord[0]+upper.x+Math.tan(pipe.topRecord[2])*retraction,y:pipe.topRecord[1]+pipe.verticalOffset+upper.y-retraction-pairedLift-(pipe.capRoofLift||0)-(pipe.motionRoofLift||0),angle:pipe.topRecord[2]};
   const lift=pipe.floorLift||0,angle=pipe.bottomRecord[2];
-  const bottom={x:pipe.bottomRecord[0]+lower.x+Math.tan(angle)*(lift-(pipe.lowerRetraction||0)),y:pipe.bottomRecord[1]+pipe.verticalOffset+lower.y+(pipe.lowerRetraction||0)-lift-pairedLift,angle};
+  const bottom={x:pipe.bottomRecord[0]+lower.x+Math.tan(angle)*(lift-(pipe.lowerRetraction||0)),y:pipe.bottomRecord[1]+pipe.verticalOffset+lower.y+(pipe.lowerRetraction||0)-lift-pairedLift+(pipe.pairedDrop||0),angle};
   return {top,bottom,center:(top.y+bottom.y)/2,angle:0};
 }
 function basePose(pipe){
@@ -83,7 +86,7 @@ export function fitFloorVisibility(pipes,ground){
   const groups=new Map();
   for(const pipe of pipes){
     if(pipe.level!=='final')continue;
-    pipe.floorLift=0;pipe.pairedLift=0;pipe.capRoofLift=0;pipe.motionRoofLift=0;pipe.fittedMotion=undefined;pipe.bottomFittedMotion=undefined;
+    pipe.floorLift=0;pipe.pairedLift=0;pipe.pairedDrop=0;pipe.capRoofLift=0;pipe.motionRoofLift=0;pipe.roofExtension=0;pipe.fittedMotion=undefined;pipe.bottomFittedMotion=undefined;
   }
   for(const pipe of pipes){
     if(pipe.level!=='final')continue;
@@ -139,6 +142,16 @@ export function fitFloorVisibility(pipes,ground){
     }
     bank.forEach((pipe,i)=>{pipe.motionRoofLift=lift;pipe.referenceBirdX=saved[i];});
   }
+  for(const pipe of pipes)if(pipe.level==='final'){
+    const post=basePose(pipe).top,motion=pipe.topMotion||pipe.motion;
+    const capDepth=pipe.width/2*Math.abs(Math.sin(post.angle))+PIPE_EXPOSURE.cap*Math.cos(post.angle);
+    pipe.roofExtension=Math.max(0,PIPE_EXPOSURE.ceilingMargin+capDepth-post.y-motionRange(motion)[0]);
+    if(post.angle===0&&pipe.bottomRecord[2]===0&&!pipe.topMotion&&!pipe.bottomMotion){
+      const floor=basePose(pipe).bottom,shaft=pipe.lowDip?PIPE_EXPOSURE.rapidShaft:PIPE_EXPOSURE.ordinaryShaft;
+      const room=ground-PIPE_EXPOSURE.cap-shaft-floor.y-motionRange(pipe.motion)[1];
+      pipe.pairedDrop=Math.min(pipe.roofExtension,Math.max(0,room));
+    }
+  }
 }
 function postEndX(pipe,ground,part){
   const post=basePose(pipe)[part],motion=pipe[part+'FittedMotion']||pipe[part+'Motion']||pipe.fittedMotion||pipe.motion;
@@ -187,8 +200,8 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
     const dx=pair.dx+(source.entryInset||0);
     const ownLayoutOffset=pair.anchorEntry===false?0:layoutOffset;
     const pipe={x:x+dx,chunkOffset:dx,width,gap:pair.bottom[1]-pair.top[1],level:'final',kind:source.id,chunkId:id,scored:false,
-      topRecord:pair.top,bottomRecord:pair.bottom,motion:pair.motion,topMotion:pair.topMotion,bottomMotion:pair.bottomMotion,
-      safetyGroup:pair.safetyGroup||0,allowRoofOverlap:pair.allowRoofOverlap||false,arrivalClearance:source.motif==='floor-bank',shaftGap:source.diagonal?2:3,verticalOffset:verticalOffset-layoutOffset+ownLayoutOffset,layoutOffset:ownLayoutOffset,referenceBirdX};
+      topRecord:[...pair.top],bottomRecord:[...pair.bottom],motion:pair.motion,topMotion:pair.topMotion,bottomMotion:pair.bottomMotion,
+      safetyGroup:pair.safetyGroup||0,lowDip:pair.lowDip||false,allowRoofOverlap:pair.allowRoofOverlap||false,arrivalClearance:source.motif==='floor-bank',shaftGap:source.diagonal?2:3,verticalOffset:verticalOffset-layoutOffset+ownLayoutOffset,layoutOffset:ownLayoutOffset,referenceBirdX};
     return Object.assign(pipe,pipePose(pipe));
   });
   // A close moving-gate continuation clears the preceding angled floors at
@@ -198,7 +211,11 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
     const roofs=prior.map(p=>postEndX(p,ground,'top')).sort((a,b)=>b-a);
     const pipe=pipes[i],pose=basePose(pipe);
     const minX=part=>Math.min(...clipToGround(postVertices({...pipe,x:0},pose[part],part==='top',pipeShaftLength(pipe,ground,part==='top')),ground).map(p=>p[0]));
-    pipe.x=Math.max(floor-minX('bottom'),(roofs[1]??-Infinity)+3-minX('top'));pipe.chunkOffset=pipe.x-x;
+    if(layout[i].joinFloor){
+      pipe.x=floor-minX('bottom');
+      pipe.topRecord[0]+=(roofs[1]??roofs[0])+3-pipe.x-minX('top');
+    }else pipe.x=Math.max(floor-minX('bottom'),(roofs[1]??-Infinity)+3-minX('top'));
+    pipe.chunkOffset=pipe.x-x;
   }
   let endX=Math.max(...pipes.map(p=>p.x+width));
   const safety=fitPassage({pipes,x,nextX:endX+source.clearance,ground,entryCenter,

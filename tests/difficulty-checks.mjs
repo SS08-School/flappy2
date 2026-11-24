@@ -38,7 +38,8 @@ export function checkDifficulty(){
       assert.equal(p.width,52);
       const expectedX=614.4+chunk.layout[j].dx+(source.entryInset||0);
       if(!chunk.layout[j].afterFloor&&!chunk.layout[j].overlayAfter)assert.ok(Math.abs(p.x-expectedX)<1e-8);
-      assert.deepEqual(p.topRecord,chunk.layout[j].top);assert.deepEqual(p.bottomRecord,chunk.layout[j].bottom);
+      if(!chunk.layout[j].joinFloor)assert.deepEqual(p.topRecord,chunk.layout[j].top);
+      assert.deepEqual(p.bottomRecord,chunk.layout[j].bottom);
       assert.ok(pipeBounds(p,336).minX>=614.4-1e-8);
       const bank=chunk.pipes.find(q=>q.safetyGroup===p.safetyGroup);
       assert.equal(p.upperRetraction,bank.upperRetraction,'each roof bank stays aligned');
@@ -48,17 +49,22 @@ export function checkDifficulty(){
     previousKind=chunk.kind;previousFamily=chunk.family;
   }
   assert.equal(seen.size,CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare).length);
-  const director=new FinalDirector(seeded()),rapid=[],long=[],history=[];
+  const director=new FinalDirector(seeded()),rapid=[],long=[],history=[],descents=[];
   for(let id=0;id<120;id++){
     const kind=director.next(id);
     assert.ok(!history.slice(-5).includes(kind),'no formation repeats within five chunks');history.push(kind);
     if(id<5)assert.notEqual(kind,'left-rush-gates','only horizontal rushes are excluded from the first five');
     if(id===0)assert.equal(kind,FINAL_OPENING_ID);
-    if(id===2)assert.equal(kind,'descending-pursuit','the broad fast descent appears early in every test run');
+    if(kind==='descending-pursuit'){
+      assert.ok(id>=5,'fast descent cannot appear in the first five chunks');
+      if(descents.length)assert.ok(id-descents.at(-1)>=8,'seven intervening chunks before another fast descent');
+      descents.push(id);
+    }
     if(kind?.startsWith('rapid-gates-'))rapid.push(id);
     if(kind?.startsWith('long-'))long.push(id);
   }
   assert.equal(rapid.length,0,'rapid reversing formations are disabled');
+  assert.ok(descents.length>=2,'fast downward passage remains available in random runs');
   assert.ok(long.length>=6&&long.length<=12);
   assert.ok(CAPTURED_FINAL_CHUNKS.every(c=>!c.id.includes('rapid')&&!c.id.includes('reversing')));
   for(const kind of ['long-dropping-tunnel','long-low-tunnel']){
@@ -75,16 +81,22 @@ export function checkDifficulty(){
   assert.ok(pipePose(rising.pipes[5]).center>later[0].center+60,'rising group leads directly through uneven pipes into a lower opening');
   assert.ok(new Set(rising.pipes.slice(3).map(p=>p.top.y)).size===3,'three uneven fixed exits follow the rising trio');
   for(const kind of ['diagonal-rise','diagonal-fall']){
-    const chunk=chunkOfKind(kind),bank={pipes:chunk.pipes.slice(0,6)};
+    const chunk=chunkOfKind(kind),bank={pipes:chunk.pipes.slice(0,5)};
+    assert.equal(bank.pipes.length,5,'roof formation has a trio and a following pair');
     const roof=bank.pipes.map(p=>atTime(p,0).top);
     assert.ok(new Set(roof.map(p=>p.y)).size>=3,'fixed roof has staggered cap lengths');
     for(const p of bank.pipes){assert.equal(p.top.angle,Math.PI/4);assert.equal(p.bottom.angle,-Math.PI/4);}
     for(let time=0;time<6;time+=.13){
       const shifts=bank.pipes.map((p,i)=>{assert.deepEqual(atTime(p,time).top,roof[i],'diagonal roof never moves');return pipeMotion(p,0,'bottom').y;});
-      assert.ok(Math.abs(shifts[0]-shifts[1])<1e-8&&Math.abs(shifts[1]-shifts[2])<1e-8&&Math.abs(shifts[3]-shifts[5])<1e-8,'each three-pipe floor group stays synchronized');
+      assert.ok(Math.abs(shifts[0]-shifts[1])<1e-8&&Math.abs(shifts[1]-shifts[2])<1e-8,'leading three-pipe floor group stays synchronized');
     }
     assert.equal(bank.pipes[0].bottomMotion.speed,26);
     assert.equal(bank.pipes[3].bottomMotion.speed,72);
+    assert.ok(bank.pipes[3].bottomMotion.returnSpeed>bank.pipes[0].bottomMotion.speed,'following pair catches the trio while rising');
+    const tail=bank.pipes[4],lead=bank.pipes[3];
+    const tailDown=atTime(tail,1.5).bottom.y-atTime(tail,1.4).bottom.y;
+    const leadDown=atTime(lead,1.5).bottom.y-atTime(lead,1.4).bottom.y;
+    assert.ok(tailDown>leadDown+2,'trailing floor separates by descending faster');
     for(const p of bank.pipes){
       const motion=p.bottomMotion,duration=Math.abs(motion.to-motion.from)/motion.speed;
       const a=atTime(p,motion.start).bottom.y,b=atTime(p,motion.start+duration).bottom.y;
@@ -132,7 +144,7 @@ export function checkDifficulty(){
   }
   assert.ok(new Set(contacts).size>1,'approach speeds differ within a set');
   assert.ok(new Set(rush.pipes.map(p=>p.bottomRecord[1])).size>=3,'rush openings have different heights');
-  for(const gate of rush.pipes.filter(p=>p.motion?.type==='rush')){
+  for(const gate of rush.pipes.filter(p=>p.motion?.type==='rush'&&!p.motion.hold)){
     const a=pipeMotion({...gate,x:-200,referenceBirdX:188}).x,b=pipeMotion({...gate,x:-200-118*.02,referenceBirdX:188}).x;
     assert.ok(Math.abs((a-b)/.02-gate.motion.speed)<1e-7,'extra movement continues after leaving the left edge');
   }
@@ -143,6 +155,9 @@ export function checkDifficulty(){
       positions.push(sample.x+26+pipePose(sample).top.x);
     }
     assert.ok(positions.every(x=>Math.abs(x-188)<1e-7),'holding pair matches actual bird x while the world continues scrolling');
+    const released=start+motion.hold+.2;
+    const a={...gate,x:188-26-118*released,referenceBirdX:188},b={...a,x:a.x-118*.02};
+    assert.ok(Math.abs(pipeMotion(a).x-pipeMotion(b).x)<1e-8,'released follower has no second extra leftward burst');
   }
   const follower=rush.pipes.at(-2),end=rush.pipes.at(-1),motion=follower.motion;
   assert.equal(rush.pipes.filter(p=>p.motion?.hold).length,1,'only one follower per section');
@@ -155,14 +170,17 @@ export function checkDifficulty(){
   assert.deepEqual(atTime(end,exitAt).top,roof,'final roof remains stationary');
   assert.ok(Math.abs(atTime(end,exitAt).bottom.y-bottom+24)<1e-7,'final floor rises continuously at 24 px/s');
   const descent=chunkOfKind('descending-pursuit'),moving=descent.pipes.filter(p=>p.motion);
-  assert.equal(moving.length,2);assert.equal(moving[0].motion.speed,96);
-  assert.ok(atTime(moving[0],1.1).center-atTime(moving[0],.8).center>28,'the broad fast formation pulls the player downward predictably');
+  assert.equal(moving.length,1);assert.equal(moving[0].motion.speed,210);
+  assert.ok(atTime(moving[0],1.1).center-atTime(moving[0],.8).center>62,'fast gate pulls the player downward through a long predictable stroke');
   for(const kind of ['stationary-diagonal-tunnel','diagonal-drop-exit']){
-    const tunnel=chunkOfKind(kind),subtle=tunnel.pipes.filter(p=>p.bottomMotion);
-    assert.equal(subtle.length,2,'two diagonal pairs move subtly');
-    for(const pipe of subtle)assert.notDeepEqual(atTime(pipe,0),atTime(pipe,.1));
+    const tunnel=chunkOfKind(kind),closing=tunnel.pipes.filter(p=>p.topMotion);
+    assert.equal(closing.length,1,'only one ceiling pipe closes the diagonal gap');
+    assert.ok(tunnel.pipes.every(p=>!p.bottomMotion),'diagonal floor remains rigid');
+    assert.ok(atTime(closing[0],.1).top.y>atTime(closing[0],0).top.y,'closing post extends into the opening');
     assert.equal(tunnel.pipes.at(-2).bottomRecord[2],-Math.PI/4);
     assert.equal(tunnel.pipes.at(-1).bottomRecord[2],Math.PI/4,'both tunnel variants finish with the opposing ground-dip pipes');
+    const incoming=pipePose(tunnel.pipes.at(-2)).bottom,emerging=pipePose(tunnel.pipes.at(-1)).bottom;
+    assert.ok(emerging.y-incoming.y>45,'long incoming shaft precedes the short emerging tip');
   }
   for(const kind of [FINAL_OPENING_ID,...FINAL_CHUNK_KINDS])for(const pipe of chunkOfKind(kind).pipes){
     for(const part of ['top','bottom']){
@@ -187,7 +205,7 @@ export function checkDifficulty(){
   const recorded=resized.pipes[0],old=pipePose(recorded),distance=recorded.x-resized.bird.x;resized.resize(288,623);
   assert.ok(Math.abs(recorded.x-resized.bird.x-distance)<1e-8);
   assert.ok(Math.abs(pipePose(recorded).top.y-old.top.y-(623-384)/2)<1e-8);
-  return 'Final: continuous rails, early predictable fast descent, one high faster follower, compact rising-floor exit, moving diagonal pairs and both ground-dip endings passed.';
+  return 'Final: continuous rails, delayed fast-descent cooldown, three-plus-two floor groups, one closing ceiling post, long-to-short ground dip and follower release passed.';
 }
 export async function checkFinalClient(){
   const c=await createClient({width:1228.8,height:768});c.controller.prepareRun();c.controller.flap();
@@ -213,6 +231,8 @@ export function checkFloorVisibility(){
     const remaining=ground-Math.max(...corners),shaft=pipe.lowDip?2:24;
     assert.ok(remaining>=shaft*co-1e-7,pipe.kind+': lower cap or minimum shaft is submerged');
     if(post.angle===0&&pose.top.angle===0)assert.ok(post.y-pose.top.y>=100-1e-7,'raised floors retain at least the original gate opening');
+    const upper=pose.top,roofCorners=[[-26,-26],[26,-26],[26,0],[-26,0]].map(([x,y])=>upper.y+x*Math.sin(upper.angle)+y*Math.cos(upper.angle));
+    assert.ok(Math.min(...roofCorners)>=12-1e-7,pipe.kind+': entire upper cap stays clear of the ceiling');
   };
   for(const ground of [336,575,960])for(const entryCenter of [100,ground/2,ground-100]){
     for(const kind of [FINAL_OPENING_ID,...FINAL_CHUNK_KINDS]){
@@ -227,5 +247,5 @@ export function checkFloorVisibility(){
   const moving=chunkOfKind('diagonal-rise',{entryCenter:236}).pipes[3],motion=moving.bottomMotion;
   const a=atTime(moving,motion.start+.01).bottom.y,b=atTime(moving,motion.start+.02).bottom.y;
   assert.ok(Math.abs(Math.abs(b-a)/.01-motion.speed)<1e-7,'ground fitting preserves the full rail speed');
-  return 'Pipe exposure: full caps and 24 native shaft pixels remain visible across complete travel ranges, entry heights and portrait-to-landscape resizing.';
+  return 'Pipe exposure: complete upper caps retain 12 pixels of ceiling clearance; floors retain full caps and minimum shafts across travel, entry heights and resizing.';
 }
