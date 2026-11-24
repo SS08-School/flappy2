@@ -2,6 +2,7 @@
 export const LEVEL3_REFERENCE={video:'YHH2101OFfI',speed:118,width:288,ground:400,captureFps:30};
 export const PIPE_CLEARANCE=3;
 export const RUSH_APPROACH=429.48;
+export const ROOF_APPROACH_ID='roof-descending-approach';
 const pitch=52+PIPE_CLEARANCE;
 const pair=(dx,top,bottom,extra={})=>({dx,top:[0,top+64,0],bottom:[0,bottom+64,0],...extra});
 const vertical=(id,source,centers,gap,spacing=pitch,motion)=>({
@@ -16,6 +17,14 @@ function rising(id,window=false){
   chunk.family='rising';chunk.motif='rising';chunk.minEntry=156;
   const exits=window?[[60,246],[136,282],[180,286]]:[[64,250],[132,280],[184,286]];
   exits.forEach(([top,bottom],i)=>chunk.pairs.push(pair((i+3)*pitch,top,bottom,{safetyGroup:i+1,anchorEntry:false})));
+  return chunk;
+}
+function roofApproach(){
+  // 15–18 s: an enclosed staircase takes the bird low before the diagonal
+  // floor bank lifts it again. Keep the final opening at the bank's intake.
+  const chunk=vertical(ROOF_APPROACH_ID,[15,18],[150,164,182,200,214,220],112);
+  Object.assign(chunk,{rare:'roof',minEntry:168,maxEntry:168,preserveRoute:true,passageHeight:76});
+  chunk.pairs.forEach(p=>{p.minimumGap=112;});
   return chunk;
 }
 function bank(id,{continuation=false}={}){
@@ -70,8 +79,10 @@ function diagonalTunnel(drop=false,high=false){
     const tu=125+i*54,bu=-97+i*54;
     const tx=(tu-tv)*Math.SQRT1_2-78.4888527117,ty=(tu+tv)*Math.SQRT1_2-64;
     const bx=(bu+bv)*Math.SQRT1_2-78.4888527117,by=(bv-bu)*Math.SQRT1_2-64,dx=Math.min(tx,bx);
-    const extension=i===5?92:0;
-    return {dx,top:[tx-dx,ty+64-(high?24:0),Math.PI/4],bottom:[bx-dx-extension,by+64-extension-(high?40:0),-Math.PI/4]};
+    const extension=i===5?92:0,rearTip=i===5?6:0,exitTrim=i===5?4:0;
+    // Expose a little rear shaft beyond the foreground overlay. Shorten its
+    // cap along the same axis to retain flap headroom through the exit turn.
+    return {dx,top:[tx-dx+rearTip*2+exitTrim,ty+64-exitTrim-(high?24:0),Math.PI/4],bottom:[bx-dx-extension,by+64-extension-(high?40:0),-Math.PI/4]};
   });
     const floor=drop?270:278;
     pairs.push(pair(550,178,floor,{top:[0,242,-Math.PI/4],bottom:[0,floor+64,Math.PI/4],allowRoofOverlap:true,overlayAfter:true,joinFloor:true,anchorEntry:false,safetyGroup:10,passageHeight:high?96:104}));
@@ -79,7 +90,7 @@ function diagonalTunnel(drop=false,high=false){
   };
   // Reserve room for the full flap arc, not just a collision circle sliding
   // along the centerline. Keep the high variant slightly tighter.
-  return {id:high?'high-diagonal-tunnel':drop?'diagonal-drop-exit':'stationary-diagonal-tunnel',source:drop?[48,53]:[48,51],family:'diagonal',motif:'angled-tunnel',diagonal:true,passageHeight:high?88:96,anchor:92,minEntry:168,maxEntry:180,entryInset:32,clearance:3,pairs:layout(()=>.5),layout};
+  return {id:high?'high-diagonal-tunnel':drop?'diagonal-drop-exit':'stationary-diagonal-tunnel',source:drop?[48,53]:[48,51],family:'diagonal',motif:'angled-tunnel',diagonal:true,passageHeight:high?68:76,anchor:92,minEntry:168,maxEntry:180,entryInset:32,clearance:3,pairs:layout(()=>.5),layout};
 }
 function rushGates(short=false){
   const layout=random=>{
@@ -114,15 +125,32 @@ function rushGates(short=false){
   };
   return {id:short?'short-left-rush-gates':'left-rush-gates',source:short?[52,57]:[52,64],family:'rush',motif:'rush',entryInset:160,exitAtLastGate:true,clearance:24,pairs:layout(()=>.5),layout};
 }
-function longTunnel(id,low=false){
-  const top=low?[118,128,108,132,156,182,180,142,156]:[108,88,96,120,150,182,180,142,156];
-  const chunk={id,source:[34,39],family:'tunnel',rare:'long',maxEntry:180,clearance:12,
-    pairs:top.map((y,i)=>pair(i*pitch,y,Math.min(286,y+112))),
+function windingTunnel(id,long=false,low=false){
+  // The 34–43 s passage bends through short dips and staircases. Move both
+  // walls together so the route changes elevation instead of only the roof.
+  const profiles=long?[
+    [0,0,20,40,60,40,20,0,-20],
+    [0,-20,-40,-60,-40,-20,0,20,40],
+    [0,20,40,60,40,20,0,-20,0],
+    [0,-20,-40,-60,-40,-20,0,20,0],
+  ]:[
+    [0,20,40,20,0],[0,-20,-40,-20,0],
+    [0,18,38,18,-4],[0,-18,-38,-18,4],
+  ];
+  const layout=random=>{
+    const shape=profiles[Math.min(profiles.length-1,Math.floor(random()*profiles.length))];
+    const depth=.95+random()*.1,center=168+(low?6:0),gap=112;
+    const pairs=shape.map((offset,i)=>{
+      const y=center+offset*depth;
+      return pair(i*pitch,y-gap/2,y+gap/2,{minimumGap:gap});
+    });
+    if(long)pairs.push(pair(9*pitch+12,178,286,{
+      top:[0,178+64,-Math.PI/4],allowRoofOverlap:true,overlayAfter:true,anchorEntry:false,safetyGroup:2,passageHeight:92,
+    }));
+    return pairs;
   };
-  chunk.pairs.push(pair(9*pitch+12,178,286,{
-    top:[0,178+64,-Math.PI/4],allowRoofOverlap:true,overlayAfter:true,anchorEntry:false,safetyGroup:2,
-  }));
-  return chunk;
+  return {id,source:long?[34,39]:low?[39,43]:[34,37],family:'tunnel',rare:long?'long':undefined,
+    minEntry:156,maxEntry:180,preserveRoute:true,passageHeight:76,clearance:long?12:24,pairs:layout(()=>.5),layout};
 }
 function descendingPursuit(){
   // 32–34 s: one complete gate plunges along a straight, readable rail.
@@ -149,6 +177,7 @@ LEVEL3_OPENING_CHUNK.pairs[0].motion=rail(-50,60,50,-1);
 export const LEVEL3_CHUNKS=[
   vertical('stationary-tunnel',[12,14.7],[168,168,168,168,168],108),
   rising('rising-trio'),rising('rising-trio-window',true),
+  roofApproach(),
   descendingPursuit(),
   tunnelPlunger(),
   bank('diagonal-rise'),
@@ -157,12 +186,9 @@ export const LEVEL3_CHUNKS=[
   diagonalTunnel(),diagonalTunnel(true),diagonalTunnel(false,true),
   vertical('short-high-tunnel',[34,36.5],[168,154,144,154],112),
   vertical('short-low-tunnel',[36.5,39],[168,182,192,182],112),
-  {id:'stepped-roof-tunnel',source:[34,37],family:'tunnel',clearance:24,
-    pairs:[[116,236],[98,224],[132,252],[110,260],[154,296]].map(([a,b],i)=>pair(i*pitch,a,b))},
-  {id:'floor-valley-tunnel',source:[39,43],family:'tunnel',clearance:24,
-    pairs:[[128,244],[122,264],[134,280],[118,258],[126,246]].map(([a,b],i)=>pair(i*pitch,a,b))},
+  windingTunnel('stepped-roof-tunnel'),windingTunnel('floor-valley-tunnel',false,true),
   rushGates(),
   rushGates(true),
   {id:'rising-floor-interlude',family:'interlude',motif:'interlude',clearance:24,exitAtLastGate:true,pairs:[risingExit()]},
-  longTunnel('long-dropping-tunnel'),longTunnel('long-low-tunnel',true),
+  windingTunnel('long-dropping-tunnel',true),windingTunnel('long-low-tunnel',true,true),
 ];

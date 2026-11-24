@@ -1,4 +1,4 @@
-import { LEVEL3_REFERENCE, LEVEL3_CHUNKS, LEVEL3_OPENING_CHUNK } from './level3-chunks.mjs';
+import { LEVEL3_REFERENCE, LEVEL3_CHUNKS, LEVEL3_OPENING_CHUNK, ROOF_APPROACH_ID } from './level3-chunks.mjs';
 import { fitPassage, postVertices, clipToGround, pathHeight, slabRange } from './pipe-safety.mjs';
 export const LEVEL3_TEST_SCORE=5;
 export const LEVEL3_PIPE_SPEED=LEVEL3_REFERENCE.speed;
@@ -24,6 +24,9 @@ export class Level3Director {
       const motifs=this.recent.map(k=>LEVEL3_CHUNKS.find(c=>c.id===k)?.motif);
       const different=pool.filter(c=>!c.motif||!motifs.includes(c.motif));if(different.length)pool=different;
       kind=pool[Math.min(pool.length-1,Math.floor(this.random()*pool.length))].id;
+    }
+    if(LEVEL3_CHUNKS.find(c=>c.id===kind)?.motif==='floor-bank'&&this.recent.at(-1)!==ROOF_APPROACH_ID){
+      this.pendingKind=kind;kind=ROOF_APPROACH_ID;
     }
     if(LEVEL3_CHUNKS.find(c=>c.id===kind)?.family==='rush'&&!this.recent.includes('rising-floor-interlude')&&this.random()<.3){
       this.pendingKind=kind;kind='rising-floor-interlude';
@@ -102,10 +105,15 @@ function basePose(pipe){
   pose.center=(pose.top.y+pose.bottom.y)/2;return pose;
 }
 export function fitFloorVisibility(pipes,ground){
-  const groups=new Map();
+  const groups=new Map(),staticBanks=new Map();
   for(const pipe of pipes){
     if(pipe.level!==3)continue;
     pipe.floorLift=0;pipe.pairedLift=0;pipe.pairedDrop=0;pipe.capRoofLift=0;pipe.motionRoofLift=0;pipe.roofExtension=0;pipe.fittedMotion=undefined;pipe.bottomFittedMotion=undefined;
+    if(!pipe.motion&&!pipe.topMotion&&!pipe.bottomMotion&&pipe.topRecord[2]===0&&pipe.bottomRecord[2]===0){
+      const key=[pipe.chunkId,pipe.safetyGroup,pipe.layoutOffset].join(':');
+      if(!staticBanks.has(key))staticBanks.set(key,[]);
+      staticBanks.get(key).push(pipe);
+    }
   }
   for(const pipe of pipes){
     if(pipe.level!==3)continue;
@@ -119,6 +127,12 @@ export function fitFloorVisibility(pipes,ground){
     const key=[pipe.chunkId,pipe.safetyGroup,paired?'pair':'floor',motion.group??'',motion.type,motion.period,motion.phase,motion.from,motion.to,motion.speed,motion.type==='bank'?'linked':motion.returnSpeed,motion.start].join(':');
     if(!groups.has(key))groups.set(key,{pipes:[],motion,paired,excess:0});
     const group=groups.get(key);group.pipes.push(pipe);group.excess=Math.max(group.excess,excess);
+  }
+  // Fit a stationary straight bank as one shape. Per-pipe clamping flattens
+  // most of a varied bank and leaves isolated short tips at the screen edges.
+  for(const bank of staticBanks.values()){
+    const lift=Math.max(...bank.map(pipe=>pipe.floorLift));
+    for(const pipe of bank)pipe.floorLift=lift;
   }
   for(const {pipes:bank,motion,paired,excess} of groups.values()){
     if(excess<=0)continue;
@@ -147,6 +161,10 @@ export function fitFloorVisibility(pipes,ground){
     pipe.capRoofLift=Math.max(0,(pipe.minimumGap??100)-(pose.bottom.y+bottom-pose.top.y-top),
       pipe.approachCeiling===undefined?0:pose.top.y-pipe.approachCeiling-(ground-336)/2);
   }
+  for(const bank of staticBanks.values()){
+    const lift=Math.max(...bank.map(pipe=>pipe.capRoofLift));
+    for(const pipe of bank)pipe.capRoofLift=lift;
+  }
   for(const id of new Set(pipes.filter(p=>p.arrivalClearance).map(p=>p.chunkId))){
     const bank=pipes.filter(p=>p.chunkId===id),saved=bank.map(p=>p.referenceBirdX);let lift=0;
     const start=Math.min(...bank.map(p=>p.x))-32,end=Math.max(...bank.map(p=>postEndX(p,ground,'bottom')))+32;
@@ -171,6 +189,12 @@ export function fitFloorVisibility(pipes,ground){
       const room=ground-PIPE_EXPOSURE.cap-shaft-floor.y-motionRange(pipe.motion)[1];
       pipe.pairedDrop=Math.min(pipe.roofExtension,Math.max(0,room));
     }
+  }
+  for(const bank of staticBanks.values()){
+    const extension=Math.max(...bank.map(pipe=>pipe.roofExtension));
+    const room=Math.min(...bank.map(pipe=>ground-PIPE_EXPOSURE.cap-(pipe.minimumShaft??PIPE_EXPOSURE.ordinaryShaft)-basePose(pipe).bottom.y+pipe.pairedDrop));
+    const drop=Math.min(extension,Math.max(0,room));
+    for(const pipe of bank){pipe.roofExtension=extension;pipe.pairedDrop=drop;}
   }
   for(const id of new Set(pipes.filter(p=>p.alignedRoof).map(p=>p.chunkId))){
     for(const group of new Set(pipes.filter(p=>p.chunkId===id&&!p.noTop).map(p=>p.roofGroup))){
@@ -254,6 +278,12 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   }
   fitFloorVisibility(connectors,ground);
   for(const pipe of chunk.corePipes)pipe.x+=span;
+  // An accelerated first gate must also respect the stationary entrance
+  // connectors. Otherwise it can catch and overlap them after a tight bend.
+  if(chunk.family==='rush')for(const pipe of chunk.corePipes){
+    pipe.rushAhead=[...connectors.map(p=>({distance:pipe.x-p.x,width:p.width,
+      center:(p.topRecord[1]+p.bottomRecord[1])/2,motion:{type:'rush',speed:0,trigger:pipe.motion.trigger}})),...(pipe.rushAhead||[])];
+  }
   chunk.coreStartX+=span;chunk.endX+=span;chunk.nextX+=span;
   chunk.pipes=[...connectors,...chunk.corePipes];
   const firstMiddle=gateArrival(chunk.corePipes[0],width/2);
@@ -271,6 +301,9 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
   const dense=family=>['tunnel','rising','diagonal'].includes(family);
   if(dense(previous?.family))choices=choices.filter(c=>c.family!==previous.family);
   const source=kind===LEVEL3_OPENING_ID?LEVEL3_OPENING_CHUNK:kind?LEVEL3_CHUNKS.find(c=>c.id===kind):choices[Math.min(choices.length-1,Math.floor(random()*choices.length))];
+  // The dedicated descent supplies most of the approach. Retain only the
+  // short release needed to begin a flap after clearing its enclosed roof.
+  if(source.motif==='floor-bank'&&previousKind===ROOF_APPROACH_ID)x-=Math.min(32,source.entryInset||0);
   // Accelerated approaches can reach back toward the preceding section.
   // Keep their authored safety reservation out of ordinary tunnel joins.
   if(entryPort&&source.family==='rush'&&!['rush','interlude'].includes(previous?.family))x+=Math.max(0,(previous?.clearance||3)-3);
@@ -307,7 +340,9 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
     pipe.chunkOffset=pipe.x-x;
   }
   let endX=Math.max(...pipes.map(p=>p.x+width));
-  const safety=source.guidedEntry?{nodes:[]}:fitPassage({pipes,x,nextX:endX+clearance,ground,entryCenter,
+  // Fit shaped tunnels around their own entrance. Connecting gates handle
+  // the incoming height later, so fitting cannot flatten the authored bends.
+  const safety=source.guidedEntry?{nodes:[]}:fitPassage({pipes,x,nextX:endX+clearance,ground,entryCenter:source.preserveRoute?basePose(pipes[0]).center:entryCenter,
     pose:basePose,envelope:basePose,length:pipeShaftLength,height:source.passageHeight});
   // Captured floor banks use their recorded rails. Fit the roof to the actual
   // arrival clearance below instead of widening a static midpoint corridor.

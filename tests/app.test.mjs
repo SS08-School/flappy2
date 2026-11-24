@@ -5,8 +5,8 @@ import { checkPresentation, checkBirdVariants, checkNewBestPlacement, checkDeath
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 import { checkScoreDigits } from './score-checks.mjs';
 import { checkBackgroundJoins } from './background-checks.mjs';
-import { checkDifficulty, checkLevel3Client, checkFloorVisibility } from './difficulty-checks.mjs';
-import { checkPassages, checkChunkContinuity } from './passage-checks.mjs';
+import { checkDifficulty, checkLevel3Client, checkFloorVisibility, checkStationaryBankAlignment } from './difficulty-checks.mjs';
+import { checkPassages, checkChunkContinuity, checkWindingTunnels, checkRoofApproach } from './passage-checks.mjs';
 test('original game rules and widescreen geometry', checkEngine);
 test('static game server', checkServer);
 test('uploaded official sprite sheet only', checkAssets);
@@ -38,5 +38,8 @@ test('random level 3 difficulty chunks and collisions', checkDifficulty);
 test('level 3 difficulty uses only official pipe graphics', checkLevel3Client);
 
 test('lower pipe caps stay fully visible above ground', checkFloorVisibility);
+test('stationary pipe groups preserve level tips and authored shapes', checkStationaryBankAlignment);
 test('every supported chunk join has a realistically flyable passage', checkPassages);
 test('continuous tunnel spacing across chunk joins', checkChunkContinuity);
+test('varied tunnel dips and staircases remain realistically flyable', checkWindingTunnels);
+test('descending enclosed approaches lead into unchanged roof formations', checkRoofApproach);

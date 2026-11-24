@@ -6,6 +6,32 @@ import { createClient } from './client-checks.mjs';
 const seeded=(seed=17)=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
 export function chunkOfKind(kind,options={}){return createLevel3Chunk({x:614.4,ground:336,referenceBirdX:188,kind,...options});}
 function atTime(pipe,time){pipe.referenceBirdX=pipe.x-pipe.chunkOffset+26+time*LEVEL3_PIPE_SPEED;return pipePose(pipe);}
+export function checkStationaryBankAlignment(){
+  const kinds=['stationary-tunnel','short-high-tunnel','short-low-tunnel','stepped-roof-tunnel',
+    'floor-valley-tunnel','long-dropping-tunnel','long-low-tunnel'];
+  for(const kind of kinds)for(const ground of [336,575,960])for(const entry of [90,100,168,236,ground-90]){
+    const chunk=chunkOfKind(kind,{ground,entryCenter:entry});
+    const bank=chunk.corePipes.filter(p=>!p.motion&&!p.topMotion&&!p.bottomMotion&&p.topRecord[2]===0&&p.bottomRecord[2]===0);
+    const first=bank[0],base=pipePose(first);
+    for(const pipe of bank){
+      const pose=pipePose(pipe);
+      assert.ok(Math.abs(pose.top.y-base.top.y-(pipe.topRecord[1]-first.topRecord[1]))<1e-7,
+        kind+': height fitting must preserve the authored roof shape, including equal-length tips');
+      assert.ok(Math.abs(pose.bottom.y-base.bottom.y-(pipe.bottomRecord[1]-first.bottomRecord[1]))<1e-7,
+        kind+': height fitting must preserve the authored floor shape');
+    }
+    if(kind==='stationary-tunnel'){
+      assert.equal(new Set(bank.map(p=>pipePose(p).top.y)).size,1,'all tips in a flat roof stay exactly even');
+      assert.equal(new Set(bank.map(p=>pipePose(p).bottom.y)).size,1,'all tips in a flat floor stay exactly even');
+    }
+  }
+  // Previously these placements flattened most tips, leaving one short pipe.
+  for(const [kind,entry] of [['short-high-tunnel',100],['short-low-tunnel',236],['floor-valley-tunnel',236]]){
+    const bank=chunkOfKind(kind,{entryCenter:entry}).corePipes;
+    assert.ok(new Set(bank.map(p=>pipePose(p).top.y)).size>=3,kind+': intended variation cannot collapse to a single odd tip');
+  }
+  return 'Stationary banks: flat tips stay level and intentional roof/floor shapes survive fitting near the ground and ceiling at every supported entry height.';
+}
 export function checkDifficulty(){
   assert.equal(LEVEL3_TEST_SCORE,5);assert.equal(LEVEL3_PIPE_SPEED,118);
   const events=[],game=new Game({width:614.4,height:384,random:()=>.5,onEvent:(type,data)=>events.push({type,data})});
@@ -333,9 +359,22 @@ export function checkDifficulty(){
       }
       return gap;
     };
-    assert.ok(minimum(ordinary)<=160,'ordinary diagonal interior keeps the tightened flight corridor');
-    assert.ok(minimum(high)<=148,'higher diagonal interior keeps its tighter flight corridor');
+    assert.ok(minimum(ordinary)<=140,'ordinary diagonal interior keeps the tighter reference-like flight corridor');
+    assert.ok(minimum(high)<=132,'higher diagonal interior keeps its tighter flight corridor');
     assert.ok(minimum(high)<minimum(ordinary)-7,'higher diagonal route is slightly narrower');
+  }
+  for(const kind of ['stationary-diagonal-tunnel','diagonal-drop-exit','high-diagonal-tunnel'])for(const ground of [336,575])for(const entry of [100,168,236])for(const profile of [.1,.5,.9]){
+    const chunk=chunkOfKind(kind,{ground,entryCenter:entry,random:()=>profile});
+    const rear=chunk.pipes.at(-2),overlay=chunk.pipes.at(-1),r=pipePose(rear).top,o=pipePose(overlay).top;
+    const rx=rear.x+26+r.x,ox=overlay.x+26+o.x;
+    // A point near the top edge must remain inside the real rear shaft and
+    // past the far side of the foreground pipe, leaving a visible sliver.
+    const y=2,x=rx+r.y+26*Math.SQRT2-y-2;
+    const localX=(x-rx)*Math.cos(r.angle)+(y-r.y)*Math.sin(r.angle);
+    const localY=-(x-rx)*Math.sin(r.angle)+(y-r.y)*Math.cos(r.angle);
+    const foregroundX=(x-ox)*Math.cos(o.angle)+(y-o.y)*Math.sin(o.angle);
+    assert.ok(Math.abs(localX)<26&&localY<0,'exposed point belongs to the rear roof shaft');
+    assert.ok(foregroundX>27,'rear shaft visibly protrudes beyond the far edge of the overlay');
   }
   for(const kind of [LEVEL3_OPENING_ID,...LEVEL3_CHUNK_KINDS])for(const pipe of chunkOfKind(kind).pipes){
     for(const part of ['top','bottom']){
