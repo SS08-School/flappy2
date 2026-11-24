@@ -6,6 +6,8 @@ export const SPRITES = {
   sparkleSmall: { x: 276, y: 682, width: 10, height: 10 },
   sparkleMedium: { x: 276, y: 734, width: 10, height: 10 },
   yellow: { width: 34, height: 24, frames: [[6, 982], [62, 982], [118, 982]] },
+  blue: { width: 34, height: 24, frames: [[174, 982], [230, 658], [230, 710]] },
+  red: { width: 34, height: 24, frames: [[230, 762], [230, 814], [230, 866]] },
   day: { x: 0, y: 0, width: 288, height: 512 },
   night: { x: 292, y: 0, width: 288, height: 512 },
   ground: { x: 584, y: 0, width: 336, height: 112 },
@@ -47,9 +49,9 @@ export function drawSprite(ctx, name, x, y, scale = 1, snap = true) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(atlas, s.x, s.y, s.width, s.height, snap ? Math.round(x) : x, snap ? Math.round(y) : y, s.width * scale, s.height * scale);
 }
-export function drawBird(ctx, x, y, wing = 0, angle = 0) {
+export function drawBird(ctx, x, y, wing = 0, angle = 0, color = 'yellow') {
   if (!atlas) return;
-  const s = SPRITES.yellow;
+  const s = SPRITES[color];
   const [sx, sy] = s.frames[wing > .3 ? 0 : wing < -.3 ? 2 : 1];
   ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
   ctx.imageSmoothingEnabled = false;

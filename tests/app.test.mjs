@@ -1,7 +1,7 @@
 import test from 'node:test';
 import { checkEngine, checkServer, checkAssets, checkPipeTiming } from './checks.mjs';
 import { checkClient, checkGroundLoop, checkPipeAnchoring, checkBirdAnimation, checkRefreshRates, checkInputLatency, checkResponsiveClient, checkPreciseInputTiming } from './client-checks.mjs';
-import { checkPresentation } from './presentation-checks.mjs';
+import { checkPresentation, checkBirdVariants, checkNewBestPlacement, checkDeathContinuity } from './presentation-checks.mjs';
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 import { checkScoreDigits } from './score-checks.mjs';
 import { checkDifficulty, checkFinalClient, checkFloorVisibility } from './difficulty-checks.mjs';
@@ -12,6 +12,9 @@ test('uploaded official sprite sheet only', checkAssets);
 test('original game client flow', () => checkClient());
 test('animated client flow and cancellation', () => checkClient({ reducedMotion: false }));
 test('screen transitions and reference-video bird presentation', checkPresentation);
+test('independent official bird colors and day/night selection', checkBirdVariants);
+test('NEW badge placement from the supplied reference', checkNewBestPlacement);
+test('continuous death rotation across frame timing and late input', checkDeathContinuity);
 
 test('reference idle and active bird animation', checkBirdAnimation);
 test('supplied sound effects and gameplay timing', checkAudio);
@@ -29,4 +32,4 @@ test('random final difficulty chunks and collisions', checkDifficulty);
 test('final difficulty uses only official pipe graphics', checkFinalClient);
 
 test('lower pipe caps stay fully visible above ground', checkFloorVisibility);
-test('every chunk and join has a realistically flyable passage', checkPassages);
+test('every supported chunk join has a realistically flyable passage', checkPassages);

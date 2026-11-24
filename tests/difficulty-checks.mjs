@@ -37,7 +37,7 @@ export function checkDifficulty(){
     chunk.pipes.forEach((p,j)=>{
       assert.equal(p.width,52);
       const expectedX=614.4+chunk.layout[j].dx+(source.entryInset||0);
-      if(!chunk.layout[j].afterFloor)assert.equal(p.x,expectedX);
+      if(!chunk.layout[j].afterFloor&&!chunk.layout[j].overlayAfter)assert.ok(Math.abs(p.x-expectedX)<1e-8);
       assert.deepEqual(p.topRecord,chunk.layout[j].top);assert.deepEqual(p.bottomRecord,chunk.layout[j].bottom);
       assert.ok(pipeBounds(p,336).minX>=614.4-1e-8);
       const bank=chunk.pipes.find(q=>q.safetyGroup===p.safetyGroup);
@@ -57,21 +57,22 @@ export function checkDifficulty(){
     if(kind?.startsWith('rapid-gates-'))rapid.push(id);
     if(kind?.startsWith('long-'))long.push(id);
   }
-  assert.ok(rapid.length>=10&&long.length>=6&&long.length<=12);
-  for(let i=1;i<rapid.length;i++)assert.ok(rapid[i]-rapid[i-1]>=8&&rapid[i]-rapid[i-1]<=10,'rapid sets recur every 8–10 chunks');
-  for(const count of [2,3])assert.equal(chunkOfKind('rapid-gates-'+count).pipes.length,count);
+  assert.equal(rapid.length,0,'rapid reversing formations are disabled');
+  assert.ok(long.length>=6&&long.length<=12);
+  assert.ok(CAPTURED_FINAL_CHUNKS.every(c=>!c.id.includes('rapid')&&!c.id.includes('reversing')));
   for(const kind of ['long-dropping-tunnel','long-low-tunnel']){
     const tunnel=chunkOfKind(kind);
-    assert.equal(tunnel.pipes.length,9);assert.ok(tunnel.pipes.at(-1).allowRoofOverlap);
+    assert.equal(tunnel.pipes.length,10);assert.ok(tunnel.pipes.at(-1).allowRoofOverlap);
     assert.ok(tunnel.exitCenter>tunnel.safePath[1][1]+35,'long tunnel ends through a lower opening');
   }
   const flat=chunkOfKind('stationary-tunnel');assert.equal(flat.pipes.length,5);
   assert.equal(flat.pipes.at(-1).x-flat.pipes[0].x+52,272,'five columns with small visible gaps, not a concatenated tunnel');
   for(const p of flat.pipes){assert.equal(p.motion,undefined);assert.deepEqual(atTime(p,0),atTime(p,20));}
-  const rising=chunkOfKind('rising-trio');assert.equal(rising.pipes.length,5);
+  const rising=chunkOfKind('rising-trio');assert.equal(rising.pipes.length,6);
   const initial=rising.pipes.slice(0,3).map(p=>atTime(p,0)),later=rising.pipes.slice(0,3).map(p=>atTime(p,1));
   assert.ok(later.every((p,i)=>p.bottom.y<initial[i].bottom.y&&p.top.y<initial[i].top.y),'three complete pairs rise together');
-  assert.ok(pipePose(rising.pipes[3]).center>initial[0].center+30,'rising group leads directly into a low opening');
+  assert.ok(pipePose(rising.pipes[5]).center>later[0].center+60,'rising group leads directly through uneven pipes into a lower opening');
+  assert.ok(new Set(rising.pipes.slice(3).map(p=>p.top.y)).size===3,'three uneven fixed exits follow the rising trio');
   for(const kind of ['diagonal-rise','diagonal-fall']){
     const chunk=chunkOfKind(kind),bank={pipes:chunk.pipes.slice(0,6)};
     const roof=bank.pipes.map(p=>atTime(p,0).top);
@@ -81,24 +82,31 @@ export function checkDifficulty(){
       const shifts=bank.pipes.map((p,i)=>{assert.deepEqual(atTime(p,time).top,roof[i],'diagonal roof never moves');return pipeMotion(p,0,'bottom').y;});
       assert.ok(Math.abs(shifts[0]-shifts[1])<1e-8&&Math.abs(shifts[1]-shifts[2])<1e-8&&Math.abs(shifts[3]-shifts[5])<1e-8,'each three-pipe floor group stays synchronized');
     }
-    assert.notEqual(bank.pipes[0].bottomMotion.period,bank.pipes[3].bottomMotion.period,'neighboring groups move at different speeds');
+    assert.equal(bank.pipes[0].bottomMotion.speed,26);
+    assert.equal(bank.pipes[3].bottomMotion.speed,72);
+    for(const p of bank.pipes){
+      const motion=p.bottomMotion,a=atTime(p,motion.start).bottom.y,b=atTime(p,20).bottom.y;
+      assert.ok(Math.abs((b-a)-(motion.to-motion.from))<1e-7,'ground fitting preserves the complete recorded rail travel');
+      assert.equal(p.bottomFittedMotion,undefined,'no faster shortened substitute cycle');
+      assert.deepEqual(atTime(p,20),atTime(p,21),'a bank does not bounce repeatedly after completing its travel');
+    }
+    // Scroll-compensated v=(x+y)/sqrt(2), measured in the 30 FPS recording.
+    // These samples span the second bank's reversal and long descent.
+    for(const [videoTime,expected] of [[18.8,253.7],[19,241.3],[19.2,262],[19.4,281.7],[19.6,302.4],[19.8,322.1],[20,342.8]]){
+      const pipe=bank.pipes[3];atTime(pipe,1.06+videoTime-19);
+      assert.ok(Math.abs(292+Math.SQRT2*pipeMotion(pipe,0,'bottom').y-expected)<6,'second bank follows measured source trajectory');
+    }
     atTime(bank.pipes[0],.1);atTime(bank.pipes[3],.1);
     assert.ok(Math.abs(pipeMotion(bank.pipes[0],0,'bottom').y-pipeMotion(bank.pipes[3],0,'bottom').y)>1,'groups do not move as one oversized opening');
     const p=bank.pipes[0],post=pipePose(p).top;
     assert.ok(finalPipeHits(p,{x:p.x+26+post.x+Math.sin(post.angle)*4,y:post.y-Math.cos(post.angle)*4,radius:12},336));
   }
   const connected=chunkOfKind('diagonal-fall');assert.ok(connected.pipes.at(-1).motion,'diagonal passage leads directly into a moving gate');
-  const shutter=chunkOfKind('reversing-gates').pipes[0],m=shutter.motion;
-  const turn=(.5-m.phase)*m.period,epsilon=.001;
-  const left=(triangle(turn,m.period,m.phase)-triangle(turn-epsilon,m.period,m.phase))/epsilon;
-  const right=(triangle(turn+epsilon,m.period,m.phase)-triangle(turn,m.period,m.phase))/epsilon;
-  assert.ok(Math.abs(left-4/m.period)<1e-7&&Math.abs(right+4/m.period)<1e-7,'instant reversal, no slowdown');
-  for(let t=-2;t<2;t+=.01){assert.ok(Math.abs(atTime(shutter,t).top.y-atTime(shutter,t+m.period).top.y)<1e-7);}
   const rush=chunkOfKind('left-rush-gates'),p=rush.pipes[0];
   p.referenceBirdX=p.x-400;assert.ok(pipeMotion(p).x<0,'extra movement is already active on approach');
   assert.ok(pipeScoreX(p)<p.x+13,'points follow the actual moving gate');
   const contacts=[];
-  for(const gate of rush.pipes){
+  for(const gate of rush.pipes.filter(p=>p.motion?.type==='rush')){
     const contact=(146-12)/(118+gate.motion.speed);contacts.push(contact);
     assert.ok(contact<(146-12)/118,'continuous approach is faster than normal travel');
     for(const width of [288,512,614.4]){
@@ -120,11 +128,22 @@ export function checkDifficulty(){
     }
   }
   assert.ok(new Set(contacts).size>1,'approach speeds differ within a set');
-  assert.ok(new Set(rush.pipes.map(p=>p.bottomRecord[1])).size===3,'rush openings have different heights');
-  for(const gate of rush.pipes){
+  assert.ok(new Set(rush.pipes.map(p=>p.bottomRecord[1])).size>=3,'rush openings have different heights');
+  for(const gate of rush.pipes.filter(p=>p.motion?.type==='rush')){
     const a=pipeMotion({...gate,x:-200,referenceBirdX:188}).x,b=pipeMotion({...gate,x:-200-118*.02,referenceBirdX:188}).x;
     assert.ok(Math.abs((a-b)/.02-gate.motion.speed)<1e-7,'extra movement continues after leaving the left edge');
   }
+  for(const gate of rush.pipes.filter(p=>p.motion?.hold)){
+    const motion=gate.motion,lead=(motion.trigger+26)/118,start=-motion.speed*lead/(118+motion.speed),positions=[];
+    for(const t of [start+.05,start+motion.hold/2,start+motion.hold-.05]){
+      const sample={...gate,x:188-26-118*t,referenceBirdX:188};
+      positions.push(sample.x+26+pipePose(sample).top.x);
+    }
+    assert.ok(positions.every(x=>Math.abs(x-188)<1e-7),'holding pair matches actual bird x while the world continues scrolling');
+  }
+  const end=rush.pipes.at(-1),roof=atTime(end,9).top,bottom=atTime(end,9).bottom.y;
+  assert.deepEqual(atTime(end,10).top,roof,'final roof remains stationary');
+  assert.ok(Math.abs(atTime(end,10).bottom.y-bottom+24)<1e-7,'final floor rises continuously at 24 px/s');
   let baseline;
   for(const fps of [30,60,144,240]){
     const run=new Game({width:614.4,height:384,random:seeded()});run.start();run.score=5;run.activateFinal();
@@ -132,11 +151,11 @@ export function checkDifficulty(){
     assert.equal(run.state,'playing');const sample=run.pipes.map(p=>[p.x,p.center].map(v=>Number(v.toFixed(6))));baseline ||= sample;assert.deepEqual(sample,baseline);
   }
   const resized=new Game({width:614.4,height:384});resized.start();resized.score=5;resized.activateFinal();
-  resized.pipes=chunkOfKind('reversing-gates',{x:300,referenceBirdX:resized.bird.x}).pipes;
+  resized.pipes=chunkOfKind('rising-trio',{x:300,referenceBirdX:resized.bird.x}).pipes;
   const recorded=resized.pipes[0],old=pipePose(recorded),distance=recorded.x-resized.bird.x;resized.resize(288,623);
   assert.ok(Math.abs(recorded.x-resized.bird.x-distance)<1e-8);
   assert.ok(Math.abs(pipePose(recorded).top.y-old.top.y-(623-384)/2)<1e-8);
-  return 'Final: connected formations, staggered roofs, displaced floor groups, scheduled rapid sets, rare long drop exits, continuously moving bird-relative approaches and FPS consistency passed.';
+  return 'Final: measured nonrepeating bank tracks, three-plus-three rising formation, no rapid cycles, bird-relative rush holds, rising-floor exit and FPS consistency passed.';
 }
 export async function checkFinalClient(){
   const c=await createClient({width:1228.8,height:768});c.controller.prepareRun();c.controller.flap();
@@ -145,6 +164,14 @@ export async function checkFinalClient(){
   assert.ok(commands.some(c=>c.matrix[1]>.1)&&commands.some(c=>c.matrix[1]<-.1));
   assert.ok(c.images.every(path=>path==='/assets/flappy/official-v1.3.png'));
   assert.equal(c.elements.get('play-controls').hidden,true);
+  for(const target of [c.elements.get('game'),c.elements.get('play-button')]){
+    let prevented=false;const before=game.state,velocity=game.bird.vy;
+    c.events.get('keydown')({code:'Tab',repeat:false,target:{closest:()=>target===c.elements.get('play-button')?target:null},preventDefault(){prevented=true;}});
+    assert.ok(prevented,'Tab does not perform browser focus navigation');assert.equal(game.state,before);assert.equal(game.bird.vy,velocity);
+  }
+  game.pipes=chunkOfKind('long-dropping-tunnel',{x:-30,referenceBirdX:game.bird.x}).pipes;game.state='ready';c.tick(1/240);
+  const rendered=c.elements.get('game').context.commands.filter(c=>c.kind==='image'&&[112,168].includes(c.args[0])&&c.args[1]>=646);
+  assert.ok(rendered.at(-1).matrix[1]<0&&rendered.at(-1).matrix[2]>0,'upper diagonal overlay draws after ordinary pipes');
   return 'Final client: opposite clean pipe orientations and official artwork only passed.';
 }
 export function checkFloorVisibility(){
@@ -158,15 +185,15 @@ export function checkFloorVisibility(){
   for(const ground of [336,575,960])for(const entryCenter of [100,ground/2,ground-100]){
     for(const kind of [FINAL_OPENING_ID,...FINAL_CHUNK_KINDS]){
       const chunk=chunkOfKind(kind,{ground,entryCenter});
-      for(let time=0;time<8;time+=.037)for(const pipe of chunk.pipes){atTime(pipe,time);visible(pipe,ground);}
+      for(let time=0;time<13;time+=.037)for(const pipe of chunk.pipes){atTime(pipe,time);visible(pipe,ground);}
     }
   }
   const resized=new Game({width:288,height:1008});resized.start();resized.score=5;resized.activateFinal();
-  resized.pipes=chunkOfKind('rapid-gates-3',{ground:960,entryCenter:800}).pipes;
+  resized.pipes=chunkOfKind('diagonal-rise',{ground:960,entryCenter:800}).pipes;
   resized.resize(614.4,384);
   for(let time=0;time<3;time+=.017)for(const pipe of resized.pipes){atTime(pipe,time);visible(pipe,resized.ground);}
-  const moving=chunkOfKind('rapid-gates-3',{entryCenter:236}).pipes.at(-1),motion=moving.motion;
-  const a=atTime(moving,.01).bottom.y,b=atTime(moving,.02).bottom.y;
-  assert.ok(Math.abs(Math.abs(b-a)/.01-4*motion.amplitude/motion.period)<1e-7,'ground limit shifts the baseline without flattening the fast cycle');
-  return 'Pipe exposure: ordinary caps retain 24 native shaft pixels; rapid caps remain fully visible across complete cycles, entry heights and live portrait-to-landscape resizing.';
+  const moving=chunkOfKind('diagonal-rise',{entryCenter:236}).pipes[3],motion=moving.bottomMotion;
+  const a=atTime(moving,motion.start+.01).bottom.y,b=atTime(moving,motion.start+.02).bottom.y;
+  assert.ok(Math.abs(Math.abs(b-a)/.01-motion.speed)<1e-7,'ground fitting preserves the full rail speed');
+  return 'Pipe exposure: full caps and 24 native shaft pixels remain visible across complete travel ranges, entry heights and portrait-to-landscape resizing.';
 }

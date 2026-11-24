@@ -9,7 +9,10 @@ import { pipePose, pipeShaftLength, pipeBounds } from './difficulty.mjs';
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d'), ui = $('game-ui');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-let screen = 'home', loaded = false, view, night = false, rounds = 0;
+let screen = 'home', loaded = false, view, night = false;
+const randomBird = () => ['yellow', 'blue', 'red'][Math.floor(Math.random() * 3)];
+const menuBird = randomBird();
+let runBird = menuBird;
 let clock = 0, previous = performance.now(), landDistance = 0;
 const RENDER_INTERVAL = 1000 / 240;
 const FRAME_TOLERANCE = .25; // Avoid missing a refresh over sub-millisecond timestamp jitter.
@@ -34,7 +37,7 @@ const game = new Game({ onEvent(type, data) {
     audio.play('hit');
     // Ground-only crashes have no subsequent falling whistle.
     if (game.bird.y + game.bird.radius < game.ground) audio.play('die', DEATH_SOUND_DELAY);
-    impact = { elapsed: 0, startingAngle: birdTilt, wing: lastWing, headerSound: false, panelSound: false };
+    impact = captureImpact();
     previousBest = best; finalScore = game.score; screen = 'hit'; updateControls();
   }
   if (type === 'score') {
@@ -42,13 +45,21 @@ const game = new Game({ onEvent(type, data) {
     canvas.setAttribute('aria-label', `Score ${data.score}. Tap, Space, W, or Up to flap.`);
   }
   if (type === 'over') {
-    if (!impact) { impact = { elapsed: 0, startingAngle: birdTilt, wing: lastWing }; previousBest = best; }
+    if (!impact) { impact = captureImpact(); previousBest = best; }
     screen = 'over'; finalScore = data.score; newBest = finalScore > previousBest;
     best = Math.max(best, finalScore);
     try { localStorage.setItem('flappy-best', String(best)); } catch {}
     updateControls();
   }
 } });
+
+function captureImpact() {
+  // A collision may occur between renders or while a late flap commits its
+  // pending old motion. Retain the incoming downward pose in either case.
+  const incomingAngle = flapAngle(flapElapsed, game.bird.vy);
+  const startingAngle = birdTilt > Math.PI / 4 ? Math.max(birdTilt, incomingAngle) : incomingAngle;
+  return { elapsed: 0, startingAngle, wing: lastWing, headerSound: false, panelSound: false };
+}
 
 function resultState() { return resultPresentation(impact?.elapsed ?? 0, finalScore, reducedMotion); }
 function updateControls() {
@@ -87,7 +98,7 @@ resize();
 
 function showReady() {
   game.reset(); screen = 'ready';
-  night = rounds++ > 0 && Math.random() < .5;
+  runBird = randomBird(); night = Math.random() >= .5;
   readyAge = 0; readyExitAge = null; flapElapsed = Infinity; birdTilt = 0; impact = null;
   glimmer = new MedalGlimmer();
   updateControls(); canvas.focus({ preventScroll: true });
@@ -108,7 +119,7 @@ function flap() {
     const bob = reducedMotion ? 0 : idleBob(clock);
     game.start(); game.bird.y += bob;
     screen = 'playing'; flapElapsed = 0; readyExitAge = 0; updateControls();
-  } else if (game.state === 'playing') { game.flap(); flapElapsed = 0; }
+  } else if (game.state === 'playing') { game.flap(); if(game.state === 'playing') flapElapsed = 0; }
   audio.unlock();
 }
 $('play-button').addEventListener('click', prepareRun);
@@ -117,6 +128,7 @@ document.addEventListener('pointerdown', event => {
   event.preventDefault(); flap();
 }, { capture: true, passive: false });
 document.addEventListener('keydown', event => {
+  if(event.code==='Tab'){event.preventDefault();return;}
   // Escape deliberately has no game action.
   if (['Space', 'ArrowUp', 'KeyW', 'Enter'].includes(event.code) && !event.target.closest('button')) {
     event.preventDefault(); if (!event.repeat) flap();
@@ -195,8 +207,14 @@ function frame(time) {
   const factor = view.scale * view.dpr;
   ctx.setTransform(factor, 0, 0, factor, 0, 0); ctx.imageSmoothingEnabled = false;
   const width = game.width, ground = game.ground, ox = (width - METRICS.width) / 2, oy = (game.height - METRICS.height) / 2;
-  drawBackground(ctx, width, game.height, ground, night);
+  drawBackground(ctx, width, game.height, ground, screen === 'home' ? false : night);
   const pose = game.presentation();
+  const upperOverlays=[];
+  const drawFinalPost=(pipe,post,up)=>{
+    const length=pipeShaftLength(pipe,ground,up);
+    ctx.save();ctx.translate(pipe.x+pose.pipeOffset+pipe.width/2+post.x,post.y);ctx.rotate(post.angle);
+    drawPipe(ctx,-pipe.width/2,up?-length:0,pipe.width,length,up);ctx.restore();
+  };
   for (const pipe of game.pipes) {
     const bounds = pipe.level === 'final' ? pipeBounds(pipe, ground, pose.pipeOffset)
       : { minX: pipe.x + pose.pipeOffset, maxX: pipe.x + pose.pipeOffset + pipe.width };
@@ -204,9 +222,8 @@ function frame(time) {
     if (pipe.level === 'final') {
       const shape = pipePose(pipe, pose.pipeOffset);
       for (const [post, up] of [[shape.top, true], [shape.bottom, false]]) {
-        const length = pipeShaftLength(pipe, ground, up);
-        ctx.save(); ctx.translate(pipe.x + pose.pipeOffset + pipe.width / 2 + post.x, post.y); ctx.rotate(post.angle);
-        drawPipe(ctx, -pipe.width / 2, up ? -length : 0, pipe.width, length, up); ctx.restore();
+        if(up&&pipe.allowRoofOverlap&&post.angle<0)upperOverlays.push([pipe,post]);
+        else drawFinalPost(pipe,post,up);
       }
       continue;
     }
@@ -214,13 +231,14 @@ function frame(time) {
     // Hide the shaft's final pixel beneath the foreground at every scale.
     drawPipe(ctx, pipe.x + pose.pipeOffset, pipe.center + pipe.gap / 2, pipe.width, ground - pipe.center - pipe.gap / 2 + 1);
   }
+  for(const [pipe,post] of upperOverlays)drawFinalPost(pipe,post,true);
   if (loaded) {
     // Actual flaps reset flapElapsed, restarting the faster official wing cycle.
     const flying = game.state === 'playing';
     const wing = impact ? impact.wing : wingPose(flying ? flapElapsed : clock, flying, game.bird.vy);
     if (screen === 'home') {
       drawSprite(ctx, 'title', ox + 55, oy + 86);
-      drawBird(ctx, ox + 144, oy + 164 + (reducedMotion ? 0 : idleBob(clock)), wing);
+      drawBird(ctx, ox + 144, oy + 164 + (reducedMotion ? 0 : idleBob(clock)), wing, 0, menuBird);
     } else {
       if (!impact || (!reducedMotion && impact.elapsed < TIMING.headerDelay)) drawNumber(ctx, game.score, width / 2, 18);
       const readyOpacity = reducedMotion ? readyExitAge === null ? 1 : 0 : readyExitAge === null ? Math.min(1, readyAge / TIMING.readyIn) : Math.max(0, 1 - readyExitAge / TIMING.readyOut);
@@ -229,7 +247,7 @@ function frame(time) {
         drawSprite(ctx, 'ready', ox + 46, oy + 84); drawSprite(ctx, 'tutorial', ox + 87, oy + 156); ctx.restore();
       }
       birdTilt = impact ? impactPresentation(impact.elapsed, impact.startingAngle, reducedMotion).angle : game.state === 'ready' ? 0 : flapAngle(flapElapsed, game.bird.vy);
-      drawBird(ctx, game.bird.x, pose.birdY + (screen === 'ready' && !reducedMotion ? idleBob(clock) : 0), wing, birdTilt);
+      drawBird(ctx, game.bird.x, pose.birdY + (screen === 'ready' && !reducedMotion ? idleBob(clock) : 0), wing, birdTilt, runBird);
       if (impact) renderResults(ox, oy);
     }
     lastWing = wing;

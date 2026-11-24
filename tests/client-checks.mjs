@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
 import { pipePose, pipeShaftLength, pipeBounds } from '../public/difficulty.mjs';
 
-export async function createClient({ reducedMotion = true, width = 480, height = 640, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
+export async function createClient({ reducedMotion = true, width = 480, height = 640, random = () => 0, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
   const elements = new Map(), frames = [], stored = new Map(), images = [], events = new Map();
   let rect = { width, height }, now = 0, document;
   function makeContext() {
@@ -41,8 +41,9 @@ export async function createClient({ reducedMotion = true, width = 480, height =
     addEventListener(type,fn) { events.set(type,fn); },
     querySelectorAll:()=>[...elements.values()].filter(e=>e.dataset.sprite),
   };
+  const visualMath = Object.create(Math); visualMath.random = random;
   const sandbox = {
-    document, devicePixelRatio:1, Game, METRICS, PHYSICS, viewportLayout, pipePose, pipeShaftLength, pipeBounds, console, performance:{now:()=>now},
+    document, Math:visualMath, devicePixelRatio:1, Game, METRICS, PHYSICS, viewportLayout, pipePose, pipeShaftLength, pipeBounds, console, performance:{now:()=>now},
     GameAudio: class { constructor() { return audio; } }, DEATH_SOUND_DELAY: .2,
     matchMedia:()=>({matches:reducedMotion}), ResizeObserver:class { observe() {} },
     requestAnimationFrame:callback=>frames.push(callback),

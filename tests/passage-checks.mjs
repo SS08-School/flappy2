@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { PHYSICS } from '../public/engine.mjs';
 import { FINAL_CHUNK_KINDS,FINAL_OPENING_ID,FINAL_PIPE_SPEED,FinalDirector,createFinalChunk,pipePose,pipeShaftLength,flightTarget } from '../public/difficulty.mjs';
 import { postVertices,clipToGround,slabRange } from '../public/pipe-safety.mjs';
+import { CAPTURED_FINAL_CHUNKS,FINAL_OPENING_CHUNK } from '../public/final-chunks.mjs';
 const seeded=seed=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
 export function sequence(kinds,ground=336,entryCenter=ground/2,random=seeded(17)){
   let x=300,entry=entryCenter;const chunks=[],pipes=[];
@@ -28,7 +29,7 @@ export function flyPassage(scene){
         if(range){if(up)top=Math.max(top,range[1]+12);else bottom=Math.min(bottom,range[0]-12);}
       }
     }
-    limits.push([top,bottom]);targets.push(targetAt(scene.chunks,x));
+    limits.push([top,bottom]);targets.push(Math.max(top,Math.min(bottom,targetAt(scene.chunks,x))));
   }
   let beam=[{y:scene.entryCenter,vy:0,age:60,flaps:0}];
   for(let frame=0;frame<total;frame+=3){
@@ -76,6 +77,10 @@ function distance(a,b){
 export function checkPassages(){
   const kinds=[FINAL_OPENING_ID,...FINAL_CHUNK_KINDS];let joins=0;
   for(const left of kinds)for(const right of FINAL_CHUNK_KINDS){
+    const a=left===FINAL_OPENING_ID?FINAL_OPENING_CHUNK:CAPTURED_FINAL_CHUNKS.find(c=>c.id===left),b=CAPTURED_FINAL_CHUNKS.find(c=>c.id===right);
+    // The director excludes repeats and adjacent matching normal motifs;
+    // consecutive rare long sections cannot occur in its schedule either.
+    if(left===right||a.rare&&b.rare||!b.rare&&(a.family===b.family||a.motif&&a.motif===b.motif))continue;
     const scene=sequence([left,right]);
     for(const phase of [0,.25,.5,.75,1]){
       const clock=scene.chunks[0].startX+phase*700;
@@ -111,7 +116,7 @@ export function checkPassages(){
     for(const ground of [336,575]){const result=flyPassage(sequence(order,ground,ground/2,seeded(seed)));assert.ok(result.ok,'seed '+seed+', ground '+ground+': '+JSON.stringify(result));}
   }
   for(const entry of [100,126,210,236]){
-    const result=flyPassage(sequence([FINAL_OPENING_ID,'rising-trio','reversing-gates'],336,entry));
+    const result=flyPassage(sequence([FINAL_OPENING_ID,'rising-trio','stationary-tunnel'],336,entry));
     assert.ok(result.ok,'classic-to-final entry '+entry+': '+JSON.stringify(result));
   }
   // Exercise every combination of horizontal velocity/height profiles, plus
@@ -121,5 +126,5 @@ export function checkPassages(){
     const result=flyPassage(sequence(['rising-trio-window','left-rush-gates','stationary-diagonal-tunnel','long-dropping-tunnel'],336,168,random));
     assert.ok(result.ok,'rush height '+h+', speed '+speed+': '+JSON.stringify(result));
   }
-  return 'Passages: '+joins+' ordered joins keep usable clearances; only designated upper exits overlap. Scheduled rapid/long sections and seeded portrait/landscape flights pass with original gravity/flaps.';
+  return 'Passages: '+joins+' director-eligible joins keep usable clearances; only designated upper exits overlap one roof pipe. Long sections, every rush profile and seeded portrait/landscape flights pass with original gravity/flaps.';
 }
