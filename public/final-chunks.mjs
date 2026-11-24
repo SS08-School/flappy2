@@ -95,10 +95,12 @@ function descendingPursuit(){
   return chunk;
 }
 function tunnelPlunger(){
-  const chunk=vertical('tunnel-plunger',[31,35],[204,188,118,164,218],116,78);
+  // Climb through a tight entrance, ride one descending opening, then leave
+  // through a low tunnel. The full bird-width crossing stays on the downstroke.
+  const chunk=vertical('tunnel-plunger',[31,35],[204,168,118,164,218,226],116,pitch);
   chunk.family='plunger';chunk.motif='plunger';chunk.minEntry=156;chunk.maxEntry=180;
   const moving=chunk.pairs[3];moving.lowDip=true;
-  moving.motion={type:'plunger',from:-76,to:76,speed:380,start:1.9,returnSpeed:380,slowAt:(moving.dx+38)/118,afterSpeed:60};
+  moving.motion={type:'plunger',from:-76,to:76,speed:210,start:(moving.dx-38)/118,returnSpeed:210,slowAt:(moving.dx+14)/118,afterSpeed:60};
   return chunk;
 }
 export const FINAL_OPENING_CHUNK=vertical('opening-moving-pair',[6,10],[168,168,168],124,156);

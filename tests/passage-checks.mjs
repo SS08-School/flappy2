@@ -15,8 +15,9 @@ function targetAt(chunks,x,clockX=x){
 // Search actual flap/no-flap inputs at 50 ms decision intervals. Every arc is
 // integrated at the game's 60 Hz, with at least 200 ms between presses. The beam
 // keeps real states (no teleporting, interpolation of states or changed physics).
-export function flyPassage(scene){
+export function flyPassage(scene,{minFlapInterval=.2}={}){
   const start=scene.chunks[0].startX-140,dt=PHYSICS.step;
+  const minFlapFrames=Math.ceil(minFlapInterval/dt);
   const total=Math.ceil((scene.chunks.at(-1).nextX-start)/(FINAL_PIPE_SPEED*dt));
   const limits=[],targets=[];
   for(let frame=0;frame<=total+3;frame++){
@@ -35,7 +36,7 @@ export function flyPassage(scene){
   for(let frame=0;frame<total;frame+=3){
     const candidates=new Map(),target=targets[frame+3],targetV=(target-targets[frame])/(dt*3);
     for(const state of beam)for(const flap of [false,true]){
-      if(flap&&state.age<12)continue;
+      if(flap&&state.age<minFlapFrames)continue;
       let y=state.y,vy=flap?PHYSICS.flap:state.vy,valid=true;
       for(let step=1;step<=3;step++){
         y+=vy*dt+PHYSICS.gravity*dt*dt;vy+=PHYSICS.gravity*dt;
@@ -118,6 +119,10 @@ export function checkPassages(){
   for(const entry of [100,126,210,236]){
     const result=flyPassage(sequence([FINAL_OPENING_ID,'rising-trio','stationary-tunnel'],336,entry));
     assert.ok(result.ok,'classic-to-final entry '+entry+': '+JSON.stringify(result));
+  }
+  for(const ground of [336,575])for(const entry of [100,ground/2,ground-100]){
+    const result=flyPassage(sequence(['tunnel-plunger','stationary-tunnel'],ground,entry),{minFlapInterval:.25});
+    assert.ok(result.ok,'elevator tunnel with at least 250 ms between presses, ground '+ground+', entry '+entry+': '+JSON.stringify(result));
   }
   // Exercise every combination of horizontal velocity/height profiles, plus
   // the diagonal cap-length jitter, rather than repeatedly using one layout.

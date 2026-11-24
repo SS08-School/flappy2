@@ -216,11 +216,19 @@ export function checkDifficulty(){
     }
   }
   const plunger=chunkOfKind('tunnel-plunger'),trap=plunger.pipes.find(p=>p.motion?.type==='plunger');
-  assert.equal(plunger.pipes.length,5);assert.equal(plunger.pipes.filter(p=>p.motion).length,1,'one fast gate is enclosed in a short fixed tunnel');
+  assert.equal(plunger.pipes.length,6);assert.equal(plunger.pipes.filter(p=>p.motion).length,1,'one elevator gate is enclosed in a short fixed tunnel');
   const fast=trap.motion,after=fast.slowAt+.05;
   const speedAt=t=>Math.abs(atTime(trap,t+.001).center-atTime(trap,t).center)/.001;
-  assert.ok(Math.abs(speedAt(1.95)-380)<1e-6,'tunnel gate moves faster than the retained 210 px/s descent');
-  assert.ok(Math.abs(speedAt(after)-60)<1e-6,'tunnel gate slows after the bird clears its trailing edge');
+  assert.ok(Math.abs(speedAt(fast.start+.1)-210)<1e-6,'elevator restores the previous 210 px/s speed');
+  assert.ok(Math.abs(speedAt(after)-60)<1e-6,'elevator slows as the bird starts leaving the gap');
+  const enter=(trap.chunkOffset-38)/118,leave=(trap.chunkOffset+38)/118;
+  assert.ok(fast.slowAt>enter&&fast.slowAt<leave,'slowdown happens within the exit portion of the crossing');
+  const entrance=atTime(trap,enter).center,exit=atTime(trap,leave).center;
+  assert.ok(exit-entrance>100,'bird follows the elevator gap down through a meaningful distance');
+  for(let t=enter;t<leave;t+=.01)assert.ok(atTime(trap,t+.001).center>atTime(trap,t).center,'gap never reverses upward while the bird is inside it');
+  assert.ok(pipePose(plunger.pipes[0]).center-pipePose(plunger.pipes[2]).center>60,'fixed tunnel entrance requires climbing first');
+  assert.ok(Math.abs(pipePose(plunger.pipes[4]).center-exit)<20,'descending opening joins directly to the lower exit tunnel');
+  assert.ok(plunger.pipes.slice(1).every((p,i)=>p.x-plunger.pipes[i].x===55),'tight tunnel spacing surrounds the moving opening');
   assert.ok(Math.abs(atTime(trap,fast.slowAt+.000001).center-atTime(trap,fast.slowAt-.000001).center)<.001,'speed change preserves position continuity');
   let baseline;
   for(const fps of [30,60,144,240]){
