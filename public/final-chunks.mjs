@@ -104,13 +104,13 @@ function descendingPursuit(){
   return chunk;
 }
 function tunnelPlunger(){
-  // Climb through a tight entrance, ride one descending opening, then leave
-  // through a low tunnel. The full bird-width crossing stays on the downstroke.
-  const gates=[[0,200,120],[84,172,112],[156,122,104],[211,94,100],[266,164,116],[321,204,120],[376,226,116]];
+  // Guide the climb into a roomy elevator opening. A slightly shorter rail
+  // reserves flap headroom at both ends without clipping its cap at the sky.
+  const gates=[[0,200,128],[84,172,124],[156,130,124],[211,108,120],[266,164,140],[321,204,128],[376,226,124]];
   const chunk={id:'tunnel-plunger',source:[31,35],family:'plunger',motif:'plunger',guidedEntry:true,clearance:24,
     anchor:168,minEntry:168,maxEntry:168,pairs:gates.map(([dx,center,gap],i)=>pair(dx,center-gap/2,center+gap/2,{safetyGroup:i}))};
   const moving=chunk.pairs[4];moving.lowDip=true;
-  moving.motion={type:'plunger',from:-76,to:76,speed:210,start:(moving.dx-38)/118,returnSpeed:210,slowAt:(moving.dx+14)/118,afterSpeed:60};
+  moving.motion={type:'plunger',from:-64,to:64,speed:210,start:(moving.dx-38)/118,returnSpeed:210,slowAt:(moving.dx+14)/118,afterSpeed:60};
   return chunk;
 }
 export const FINAL_OPENING_CHUNK=vertical('opening-moving-pair',[6,10],[168,144,202],124,156);

@@ -156,8 +156,8 @@ export function checkPassages(){
     assert.ok(result.ok,'classic-to-final entry '+entry+': '+JSON.stringify(result));
   }
   for(const ground of [336,575])for(const entry of [100,ground/2,ground-100]){
-    const result=flyPassage(sequence(['tunnel-plunger','stationary-tunnel'],ground,entry),{minFlapInterval:.25});
-    assert.ok(result.ok,'elevator tunnel with at least 250 ms between presses, ground '+ground+', entry '+entry+': '+JSON.stringify(result));
+    const result=flyPassage(sequence(['tunnel-plunger','stationary-tunnel'],ground,entry),{minFlapInterval:.3,safetyMargin:5});
+    assert.ok(result.ok,'elevator tunnel with at least 300 ms between presses and five pixels of spare clearance, ground '+ground+', entry '+entry+': '+JSON.stringify(result));
   }
   for(const kind of ['diagonal-rise','diagonal-fall','displaced-roof-bank'])for(const profile of [.1,.5,.9])for(const ground of [336,575]){
     const scene=sequence(['stationary-tunnel',kind,'short-low-tunnel'],ground,ground/2,()=>profile);

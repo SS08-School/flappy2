@@ -320,6 +320,16 @@ export function createFinalChunk({x,ground,entryCenter,entryPort,random=Math.ran
     if(pipe.risingFloor)node[1]=pipePose({...pipe,referenceBirdX:pipe.x+pipe.width/2}).center;
   }
   if(source.guidedEntry){
+    // Ceiling fitting can shift the elevator slightly on shorter displays.
+    // Center the last guide on its actual opening at first bird contact,
+    // rather than asking the player to correct that shift inside the tunnel.
+    const movingIndex=pipes.findIndex(pipe=>pipe.motion?.type==='plunger');
+    if(movingIndex>0){
+      const moving=pipes[movingIndex],guide=pipes[movingIndex-1];
+      const arrival=pipePose({...moving,referenceBirdX:moving.x-12});
+      const delta=arrival.center-pipePose(guide).center;
+      guide.topRecord[1]+=delta;guide.bottomRecord[1]+=delta;
+    }
     // The static lead-in points to the actual arrival opening. Its tight gaps
     // are authored with the moving trajectory, rather than widened around a
     // neutral pose the bird never encounters. These nodes guide analysis only.

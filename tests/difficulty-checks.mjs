@@ -320,11 +320,13 @@ export function checkDifficulty(){
   const spacings=plunger.pipes.slice(1).map((p,i)=>p.x-plunger.pipes[i].x);
   assert.deepEqual(spacings,[84,72,55,55,55,55],'spread entry becomes a tight guide tunnel around the elevator');
   const authored=chunkOfKind('tunnel-plunger',{entryCenter:200});
-  assert.deepEqual(authored.pipes.slice(0,4).map(p=>pipePose(p).bottom.y-pipePose(p).top.y),[120,112,104,100],'lead-in openings narrow without being widened by neutral-pose fitting');
+  assert.deepEqual(authored.pipes.slice(0,4).map(p=>pipePose(p).bottom.y-pipePose(p).top.y),[128,124,124,120],'lead-in retains extra room for the climb into the elevator');
   for(const ground of [336,575,960])for(const entryCenter of [100,ground/2,ground-100]){
     const guided=chunkOfKind('tunnel-plunger',{ground,entryCenter}),moving=guided.pipes[4],guide=pipePose(guided.pipes[3]);
     const entry=atTime(moving,(moving.chunkOffset-38)/118);
-    assert.ok(guide.top.y>=entry.top.y+2-1e-7&&guide.bottom.y<=entry.bottom.y-2+1e-7,'entire final guide opening fits inside the elevator entry with spare clearance');
+    assert.ok(Math.abs(entry.bottom.y-entry.top.y-140)<1e-7,'moving opening preserves its full wider gap');
+    assert.ok(Math.abs(guide.center-entry.center)<1e-7,'guide points to the exact elevator entry elevation');
+    assert.ok(guide.top.y>=entry.top.y+10-1e-7&&guide.bottom.y<=entry.bottom.y-10+1e-7,'elevator has ten pixels of extra room above and below the guide opening');
   }
   assert.ok(Math.abs(atTime(trap,fast.slowAt+.000001).center-atTime(trap,fast.slowAt-.000001).center)<.001,'speed change preserves position continuity');
   let baseline;
