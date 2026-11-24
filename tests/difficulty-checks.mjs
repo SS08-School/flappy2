@@ -54,6 +54,7 @@ export function checkDifficulty(){
     assert.ok(!history.slice(-5).includes(kind),'no formation repeats within five chunks');history.push(kind);
     if(id<5)assert.notEqual(kind,'left-rush-gates','only horizontal rushes are excluded from the first five');
     if(id===0)assert.equal(kind,FINAL_OPENING_ID);
+    if(id===2)assert.equal(kind,'descending-pursuit','the broad fast descent appears early in every test run');
     if(kind?.startsWith('rapid-gates-'))rapid.push(id);
     if(kind?.startsWith('long-'))long.push(id);
   }
@@ -85,10 +86,12 @@ export function checkDifficulty(){
     assert.equal(bank.pipes[0].bottomMotion.speed,26);
     assert.equal(bank.pipes[3].bottomMotion.speed,72);
     for(const p of bank.pipes){
-      const motion=p.bottomMotion,a=atTime(p,motion.start).bottom.y,b=atTime(p,20).bottom.y;
+      const motion=p.bottomMotion,duration=Math.abs(motion.to-motion.from)/motion.speed;
+      const a=atTime(p,motion.start).bottom.y,b=atTime(p,motion.start+duration).bottom.y;
       assert.ok(Math.abs((b-a)-(motion.to-motion.from))<1e-7,'ground fitting preserves the complete recorded rail travel');
       assert.equal(p.bottomFittedMotion,undefined,'no faster shortened substitute cycle');
-      assert.deepEqual(atTime(p,20),atTime(p,21),'a bank does not bounce repeatedly after completing its travel');
+      assert.notEqual(atTime(p,motion.start-.02).bottom.y,atTime(p,motion.start-.01).bottom.y,'bank already moves before the encounter');
+      assert.notEqual(atTime(p,motion.start+duration+.01).bottom.y,atTime(p,motion.start+duration+.02).bottom.y,'bank reverses without waiting after its first crossing');
     }
     // Scroll-compensated v=(x+y)/sqrt(2), measured in the 30 FPS recording.
     // These samples span the second bank's reversal and long descent.
@@ -141,9 +144,38 @@ export function checkDifficulty(){
     }
     assert.ok(positions.every(x=>Math.abs(x-188)<1e-7),'holding pair matches actual bird x while the world continues scrolling');
   }
-  const end=rush.pipes.at(-1),roof=atTime(end,9).top,bottom=atTime(end,9).bottom.y;
-  assert.deepEqual(atTime(end,10).top,roof,'final roof remains stationary');
-  assert.ok(Math.abs(atTime(end,10).bottom.y-bottom+24)<1e-7,'final floor rises continuously at 24 px/s');
+  const follower=rush.pipes.at(-2),end=rush.pipes.at(-1),motion=follower.motion;
+  assert.equal(rush.pipes.filter(p=>p.motion?.hold).length,1,'only one follower per section');
+  assert.ok(motion.hold>0&&motion.speed>rush.pipes.at(-3).motion.speed,'the final moving pair approaches faster than the previous pair');
+  assert.ok(pipePose(follower).center<=112,'the follower is high and requires flying upward');
+  const lead=(motion.trigger+26)/118,holdAt=(follower.x-rush.startX)/118-motion.speed*lead/(118+motion.speed);
+  const exitAt=(end.x-rush.startX)/118,wait=exitAt-holdAt-motion.hold;
+  assert.ok(wait>.7&&wait<1.1,'rising-floor exit arrives within about a second after the hold');
+  const roof=atTime(end,exitAt-1).top,bottom=atTime(end,exitAt-1).bottom.y;
+  assert.deepEqual(atTime(end,exitAt).top,roof,'final roof remains stationary');
+  assert.ok(Math.abs(atTime(end,exitAt).bottom.y-bottom+24)<1e-7,'final floor rises continuously at 24 px/s');
+  const descent=chunkOfKind('descending-pursuit'),moving=descent.pipes.filter(p=>p.motion);
+  assert.equal(moving.length,2);assert.equal(moving[0].motion.speed,96);
+  assert.ok(atTime(moving[0],1.1).center-atTime(moving[0],.8).center>28,'the broad fast formation pulls the player downward predictably');
+  for(const kind of ['stationary-diagonal-tunnel','diagonal-drop-exit']){
+    const tunnel=chunkOfKind(kind),subtle=tunnel.pipes.filter(p=>p.bottomMotion);
+    assert.equal(subtle.length,2,'two diagonal pairs move subtly');
+    for(const pipe of subtle)assert.notDeepEqual(atTime(pipe,0),atTime(pipe,.1));
+    assert.equal(tunnel.pipes.at(-2).bottomRecord[2],-Math.PI/4);
+    assert.equal(tunnel.pipes.at(-1).bottomRecord[2],Math.PI/4,'both tunnel variants finish with the opposing ground-dip pipes');
+  }
+  for(const kind of [FINAL_OPENING_ID,...FINAL_CHUNK_KINDS])for(const pipe of chunkOfKind(kind).pipes){
+    for(const part of ['top','bottom']){
+      const motion=pipe[part+'Motion']||pipe.motion;if(!motion||motion.type==='rush')continue;
+      assert.equal(motion.type,'rail','vertical movers use continuous rails');
+      for(let t=-4;t<13;t+=.173){
+        atTime(pipe,t);const a=pipeMotion(pipe,0,part).y;
+        atTime(pipe,t+.001);const b=pipeMotion(pipe,0,part).y;
+        atTime(pipe,t+.002);const c=pipeMotion(pipe,0,part).y;
+        assert.ok(Math.abs(a-b)>1e-7||Math.abs(b-c)>1e-7,'moving pipe has no stationary approach or departure interval');
+      }
+    }
+  }
   let baseline;
   for(const fps of [30,60,144,240]){
     const run=new Game({width:614.4,height:384,random:seeded()});run.start();run.score=5;run.activateFinal();
@@ -155,7 +187,7 @@ export function checkDifficulty(){
   const recorded=resized.pipes[0],old=pipePose(recorded),distance=recorded.x-resized.bird.x;resized.resize(288,623);
   assert.ok(Math.abs(recorded.x-resized.bird.x-distance)<1e-8);
   assert.ok(Math.abs(pipePose(recorded).top.y-old.top.y-(623-384)/2)<1e-8);
-  return 'Final: measured nonrepeating bank tracks, three-plus-three rising formation, no rapid cycles, bird-relative rush holds, rising-floor exit and FPS consistency passed.';
+  return 'Final: continuous rails, early predictable fast descent, one high faster follower, compact rising-floor exit, moving diagonal pairs and both ground-dip endings passed.';
 }
 export async function checkFinalClient(){
   const c=await createClient({width:1228.8,height:768});c.controller.prepareRun();c.controller.flap();

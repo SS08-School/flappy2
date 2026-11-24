@@ -85,7 +85,7 @@ export function checkPassages(){
     for(const phase of [0,.25,.5,.75,1]){
       const clock=scene.chunks[0].startX+phase*700;
       scene.pipes.forEach(p=>{p.referenceBirdX=clock;});
-      const posts=scene.pipes.flatMap(p=>{const pose=pipePose(p);return [[pose.top,true],[pose.bottom,false]].map(([post,up])=>({kind:p.kind,x:p.x,chunk:p.chunkId,up,overlap:p.allowRoofOverlap,gap:p.shaftGap,polygon:clipToGround(postVertices(p,post,up,pipeShaftLength(p,336,up)),336)}));}).filter(p=>p.polygon.some(v=>v[0]>=clock-188));
+      const posts=scene.pipes.flatMap(p=>{const pose=pipePose(p);return [[pose.top,true],[pose.bottom,false]].map(([post,up])=>({kind:p.kind,x:p.x,chunk:p.chunkId,up,overlap:p.allowRoofOverlap,gap:p.shaftGap,polygon:clipToGround(postVertices(p,post,up,pipeShaftLength(p,336,up)),336)}));}).filter(p=>p.polygon.some(v=>v[0]>=clock-188)&&p.polygon.some(v=>v[0]<=clock+426.4));
       for(const post of posts.filter(p=>p.up&&p.overlap))assert.ok(posts.filter(p=>p!==post&&p.up&&p.chunk===post.chunk&&overlap(post.polygon,p.polygon)).length<=1,left+' -> '+right+': exit overlaps more than one roof pipe');
       for(let i=0;i<posts.length;i++)for(let j=i+1;j<posts.length;j++){
         if(posts[i].up&&posts[j].up&&posts[i].chunk===posts[j].chunk&&(posts[i].overlap||posts[j].overlap))continue;

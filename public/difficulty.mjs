@@ -13,11 +13,12 @@ export class FinalDirector {
   next(id){
     let kind;
     if(id===0)kind=FINAL_OPENING_ID;
+    else if(id===2)kind='descending-pursuit';
     else if(id>=this.nextLong){
       this.nextLong=id+10+Math.floor(this.random()*5);kind=this.random()<.5?'long-dropping-tunnel':'long-low-tunnel';
     }else{
       const last=CAPTURED_FINAL_CHUNKS.find(c=>c.id===this.recent.at(-1));
-      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(id>=5||c.family!=='rush'));
+      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(id>=5||c.family!=='rush')&&(id>=2||c.id!=='descending-pursuit'));
       const varied=pool.filter(c=>c.family!==last?.family);if(varied.length)pool=varied;
       const motifs=this.recent.map(k=>CAPTURED_FINAL_CHUNKS.find(c=>c.id===k)?.motif);
       const different=pool.filter(c=>!c.motif||!motifs.includes(c.motif));if(different.length)pool=different;
@@ -33,7 +34,13 @@ export function triangle(time,period,phase=0){
   return 1-4*Math.abs(unit-.5);
 }
 export function motionRange(motion){
-  return motion?.type==='sweep'?[Math.min(motion.from,motion.to),Math.max(motion.from,motion.to)]:[-(motion?.amplitude||0),motion?.amplitude||0];
+  return ['sweep','rail'].includes(motion?.type)?[Math.min(motion.from,motion.to),Math.max(motion.from,motion.to)]:[-(motion?.amplitude||0),motion?.amplitude||0];
+}
+export function railPosition(time,motion){
+  const distance=Math.abs(motion.to-motion.from),forward=distance/motion.speed,back=distance/(motion.returnSpeed||motion.speed),period=forward+back;
+  const at=((time-motion.start)%period+period)%period;
+  const travel=at<forward?at*motion.speed:distance-(at-forward)*(motion.returnSpeed||motion.speed);
+  return motion.from+Math.sign(motion.to-motion.from)*travel;
 }
 export function pipeMotion(pipe,xOffset=0,part){
   const motion=(part&&(pipe[part+'FittedMotion']||pipe[part+'Motion']))||pipe.fittedMotion||pipe.motion;
@@ -51,7 +58,7 @@ export function pipeMotion(pipe,xOffset=0,part){
     if(time<holdStart+hold)return {x:start+(time-holdStart)*FINAL_PIPE_SPEED,y:0};
     return {x:start+hold*FINAL_PIPE_SPEED-(time-holdStart-hold)*motion.speed,y:0};
   }
-  const y=motion.type==='sweep'?(motion.preFrom!==undefined&&time<motion.start
+  const y=motion.type==='rail'?railPosition(time,motion):motion.type==='sweep'?(motion.preFrom!==undefined&&time<motion.start
     ?motion.from+Math.sign(motion.preFrom-motion.from)*clamp((motion.start-time)*motion.preSpeed,0,Math.abs(motion.preFrom-motion.from))
     :motion.from+Math.sign(motion.to-motion.from)*clamp((time-motion.start)*motion.speed,0,Math.abs(motion.to-motion.from)))
     :motion.amplitude*triangle(time,motion.period,motion.phase);
@@ -85,15 +92,15 @@ export function fitFloorVisibility(pipes,ground){
     const shaft=pipe.lowDip?PIPE_EXPOSURE.rapidShaft:PIPE_EXPOSURE.ordinaryShaft;
     const depth=pipe.width/2*Math.abs(Math.sin(post.angle))+(PIPE_EXPOSURE.cap+shaft)*Math.cos(post.angle);
     const excess=Math.max(0,post.y+amplitude+depth-ground);
-    if(!['triangle','sweep'].includes(motion?.type)){pipe.floorLift=excess;continue;}
+    if(!['triangle','sweep','rail'].includes(motion?.type)){pipe.floorLift=excess;continue;}
     const paired=!pipe.bottomMotion;
-    const key=[pipe.chunkId,pipe.safetyGroup,paired?'pair':'floor',motion.group??'',motion.type,motion.period,motion.phase,motion.from,motion.to,motion.speed].join(':');
+    const key=[pipe.chunkId,pipe.safetyGroup,paired?'pair':'floor',motion.group??'',motion.type,motion.period,motion.phase,motion.from,motion.to,motion.speed,motion.returnSpeed,motion.start].join(':');
     if(!groups.has(key))groups.set(key,{pipes:[],motion,paired,excess:0});
     const group=groups.get(key);group.pipes.push(pipe);group.excess=Math.max(group.excess,excess);
   }
   for(const {pipes:bank,motion,paired,excess} of groups.values()){
     if(excess<=0)continue;
-    if(motion.type==='sweep'){
+    if(['sweep','rail'].includes(motion.type)){
       // Translate the whole rail, retaining its complete measured travel and
       // duration. Ground fitting must never turn it into a short fast bounce.
       for(const pipe of bank){if(paired)pipe.pairedLift=excess;else pipe.floorLift=excess;}
@@ -212,7 +219,9 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
     for(const part of ['top','bottom'])endX=Math.max(endX,postEndX(pipe,ground,part));
   }
   const nextX=endX+source.clearance;
-  const nodes=safety.nodes.slice(0,-2),exit=source.exitCenter===undefined?nodes.at(-1)[1]:source.exitCenter+(ground-336)/2;nodes.push([endX,exit],[nextX,exit]);
+  const nodes=safety.nodes.slice(0,-2),last=pipes.at(-1);
+  const exit=source.exitAtLastGate?pipePose({...last,referenceBirdX:last.x+last.width/2}).center:source.exitCenter===undefined?nodes.at(-1)[1]:source.exitCenter+(ground-336)/2;
+  nodes.push([endX,exit],[nextX,exit]);
   for(const pipe of pipes)Object.assign(pipe,pipePose(pipe));
   return {kind:source.id,family:source.family,pipes,layout,nextX,endX,startX:x,exitCenter:exit,safePath:nodes,source:source.source};
 }
@@ -226,12 +235,12 @@ export function flightTarget(chunk,x,clockX=x){
     const blend=clamp((x-(chunk.startX-104))/104,0,1)*clamp((chunk.nextX-x)/(chunk.nextX-chunk.endX),0,1);
     return pathHeight(chunk.safePath,x)+shift.y*.5*blend;
   }
-  const moving=chunk.pipes.find(p=>['triangle','sweep'].includes(p.motion?.type));
+  const moving=chunk.pipes.find(p=>['triangle','sweep','rail'].includes(p.motion?.type));
   if(!moving)return pathHeight(chunk.safePath,x);
   const shift=pipeMotion({...moving,referenceBirdX:clockX},0,'bottom').y;
   const first=moving.x+moving.width/2;
-  const partial=chunk.pipes.some(p=>!['triangle','sweep'].includes(p.motion?.type));
-  const lastMoving=chunk.pipes.filter(p=>['triangle','sweep'].includes(p.motion?.type)).at(-1);
+  const partial=chunk.pipes.some(p=>!['triangle','sweep','rail'].includes(p.motion?.type));
+  const lastMoving=chunk.pipes.filter(p=>['triangle','sweep','rail'].includes(p.motion?.type)).at(-1);
   const fadeStart=partial?lastMoving.x+lastMoving.width+12:chunk.endX;
   const fadeEnd=partial?fadeStart+78:chunk.nextX;
   const weight=clamp((x-(chunk.startX-104))/(first-(chunk.startX-104)),0,1)*clamp((fadeEnd-x)/(fadeEnd-fadeStart),0,1);
