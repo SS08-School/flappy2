@@ -9,7 +9,8 @@ import { pipePose, pipeShaftLength, pipeBounds } from './difficulty.mjs';
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d'), ui = $('game-ui');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-let screen = 'home', loaded = false, view, night = false;
+let screen = 'home', loaded = false, view, night = false, pageFocused = document.hasFocus?.() ?? true;
+const suspended = () => document.hidden || !pageFocused;
 const randomBird = () => ['yellow', 'blue', 'red'][Math.floor(Math.random() * 3)];
 const menuBird = randomBird();
 let runBird = menuBird;
@@ -112,6 +113,7 @@ function prepareRun() {
   scene = { phase: 'out', elapsed: 0 }; updateControls();
 }
 function flap(inputTime) {
+  if(suspended())return;
   if (!loaded) { audio.unlock(); initializeAssets(); return; }
   const now=performance.now();
   // A busy frame can deliver an event after its physical press. Apply the
@@ -142,6 +144,12 @@ document.addEventListener('keydown', event => {
 
 document.addEventListener('visibilitychange', () => {
   previous = performance.now(); nextFrameAt = previous;
+});
+window.addEventListener('blur', () => {
+  pageFocused=false;previous=performance.now();nextFrameAt=previous;
+});
+window.addEventListener('focus', () => {
+  pageFocused=true;previous=performance.now();nextFrameAt=previous;
 });
 
 function advanceScene(dt) {
@@ -180,6 +188,7 @@ function renderResults(xOffset, yOffset) {
   ctx.restore();
 }
 function advance(time) {
+  if(suspended()){previous=time;nextFrameAt=time;return;}
   const elapsed = Math.max(0, (time - previous) / 1000), dt = Math.min(elapsed, .1);
   if (elapsed === 0) return;
   previous = time;
@@ -200,9 +209,12 @@ function advance(time) {
   }
   if (!impact) landDistance += game.speed * dt;
 }
-function frame(time) {
+function frame() {
+  // A queued RAF timestamp can precede a just-handled input or focus event.
+  // Sample the clock now so the first available frame shows the new flap.
+  const time=performance.now();
   requestAnimationFrame(frame);
-  if (document.hidden) { previous = time; nextFrameAt = time + RENDER_INTERVAL; return; }
+  if (suspended()) { previous = time; nextFrameAt = time + RENDER_INTERVAL; return; }
   // Simulation and input timing do not wait for the render limiter.
   advance(time);
   if (time + FRAME_TOLERANCE < nextFrameAt) return;

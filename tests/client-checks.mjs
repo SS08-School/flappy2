@@ -5,7 +5,7 @@ import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
 import { createFinalChunk, pipePose, pipeShaftLength, pipeBounds } from '../public/difficulty.mjs';
 
 export async function createClient({ reducedMotion = true, width = 480, height = 640, dpr = 1, random = () => 0, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
-  const elements = new Map(), frames = [], stored = new Map(), images = [], events = new Map();
+  const elements = new Map(), frames = [], stored = new Map(), images = [], events = new Map(), windowEvents=new Map();
   let rect = { width, height }, now = 0, document;
   function makeContext() {
     let matrix = [1,0,0,1,0,0]; const stack = [], commands = [];
@@ -44,7 +44,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
   };
   const visualMath = Object.create(Math); visualMath.random = random;
   const sandbox = {
-    document, Math:visualMath, devicePixelRatio:dpr, Game, METRICS, PHYSICS, viewportLayout, pipePose, pipeShaftLength, pipeBounds, console, performance:{now:()=>now},
+    document, window:{addEventListener(type,fn){windowEvents.set(type,fn);}}, Math:visualMath, devicePixelRatio:dpr, Game, METRICS, PHYSICS, viewportLayout, pipePose, pipeShaftLength, pipeBounds, console, performance:{now:()=>now},
     GameAudio: class { constructor() { return audio; } }, DEATH_SOUND_DELAY: .2,
     matchMedia:()=>({matches:reducedMotion}), ResizeObserver:class { observe() {} },
     requestAnimationFrame:callback=>frames.push(callback),
@@ -60,9 +60,10 @@ export async function createClient({ reducedMotion = true, width = 480, height =
   const controller=await new vm.Script(`(async()=>{${assets}\n${transitions}\nconst TIMING=TRANSITION_TIMING;\n${presentation}\n${medal}\n${client}\nreturn {game,prepareRun,flap,resize,screen:()=>screen};})()`).runInNewContext(sandbox);
   await Promise.resolve();
   return {controller,elements,events,stored,images,
-    tick(seconds) { now+=seconds*1000; frames.shift()(now); },
+    tick(seconds,frameLag=0) { now+=seconds*1000; frames.shift()(now-frameLag*1000); },
     elapse(seconds) { now+=seconds*1000; },
     visibility(hidden) { document.hidden=hidden; events.get('visibilitychange')(); },
+    focus(focused) { windowEvents.get(focused?'focus':'blur')(); },
     resize(w,h) { rect={width:w,height:h}; controller.resize(); },
   };
 }
@@ -366,6 +367,27 @@ export async function checkPreciseInputTiming() {
     const a=immediate.controller.game,b=queued.controller.game;
     assert.ok(Math.abs(a.presentation().birdY-b.presentation().birdY)<1e-8,'queued '+input+' uses press time, without adding the delivery delay to the fall');
     assert.ok(Math.abs(a.distance-b.distance)<1e-8,'queued input does not change world speed');
+  }
+  for(const recovery of ['active','tab','window'])for(const input of ['pointer','keyboard']){
+    const c=await createClient();c.controller.prepareRun();c.controller.flap();c.tick(.02);
+    const game=c.controller.game;game.bird.y=180;game.bird.vy=200;game.accumulator=0;
+    const frozen={y:game.bird.y,vy:game.bird.vy,distance:game.distance};
+    if(recovery==='tab')c.visibility(true);
+    if(recovery==='window')c.focus(false);
+    if(recovery!=='active'){
+      c.tick(2);
+      assert.deepEqual({y:game.bird.y,vy:game.bird.vy,distance:game.distance},frozen,'leaving a tab or window suspends gameplay');
+      if(recovery==='tab')c.visibility(false);else c.focus(true);
+    }
+    c.elapse(.001);
+    if(input==='pointer')c.events.get('pointerdown')({button:0,target,preventDefault(){}});else press(c);
+    assert.equal(game.bird.vy,PHYSICS.flap,'first press after focus returns applies immediately');
+    const y=game.bird.y,count=c.elements.get('game').context.renderCount;
+    c.tick(1/240,.01);
+    const context=c.elements.get('game').context;
+    assert.equal(context.renderCount,count+1,'an older RAF timestamp cannot suppress the first available frame');
+    const bird=context.commands.find(q=>q.kind==='image'&&q.args[1]===982&&q.args[2]===34);
+    assert.ok(bird.matrix[5]/Math.hypot(bird.matrix[0],bird.matrix[1])<y,'first available frame shows the flap even if its queued RAF timestamp predates the press');
   }
   return 'Precise input: between-frame and stalled-frame presses retain full strength, timestamped flight matches across FPS, and tab/jitter handling avoids added delay.';
 }

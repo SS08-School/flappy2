@@ -20,9 +20,10 @@ function rising(id,window=false){
 }
 function bank(id,{continuation=false}={}){
   // 18–22 s: the leading trio rises and stays extended. The following two
-  // posts rise together, reverse together, and finish their returns together.
-  // The next floor is fixed: the low pair and this higher tip form a wave.
-  const floorV=[251,251,251,309,309,560];
+  // posts have staggered reversals and finish their returns together. Their
+  // short stopped tips and the fixed third floor form three regular saw teeth.
+  const pairFloor=308.9,sawStep=12,tailReturn=125+54*Math.SQRT1_2-sawStep;
+  const floorV=[251,251,251,pairFloor,pairFloor,pairFloor+108+(125-2*sawStep)*Math.SQRT2];
   const profiles=[
     {trio:22,start:-.5,pair:54,lead:82,tail:116},
     {trio:26,start:-.67,pair:50,lead:72,tail:104},
@@ -35,11 +36,13 @@ function bank(id,{continuation=false}={}){
     const trioStart=-3.6,trioEnd=profile.start+65/profile.trio;
     const pairs=floorV.map((v,i)=>{
       const group=i<3?0:i<5?1:2,bu=-182+i*54;
+      const returnEnd=1.06+160/profile.lead;
+      const peak=i===4?returnEnd-(tailReturn+35)/profile.tail:1.06;
       const tx=i===0?96:292+(i-1)*54*Math.SQRT1_2,ty=i===0?72:50+(i-1)*54*Math.SQRT1_2;
       const bx=(bu+v)*Math.SQRT1_2-3,by=(v-bu)*Math.SQRT1_2-64,dx=Math.min(tx,bx)-26;
       return {dx,top:[tx-dx-26,ty+64,Math.PI/4],noTop:i===5,roofGroup:i?1:0,safetyGroup:group,minimumShaft:group===1?8:24,bottom:[bx-dx-26,by+64,-Math.PI/4],
-        bottomMotion:group===2?undefined:group===1?{type:'bank',from:125,to:-35,speed:profile.pair,start:1.06-160/profile.pair,returnSpeed:i===4?profile.tail:profile.lead,
-          returnTo:i===4?-35+160*profile.tail/profile.lead:125,alongShaft:true,group}
+        bottomMotion:group===2?undefined:group===1?{type:'bank',from:125,to:-35,speed:profile.pair,start:peak-160/profile.pair,returnSpeed:i===4?profile.tail:profile.lead,
+          returnTo:i===4?tailReturn:125,alongShaft:true,group}
           :{type:'sweep',from:45,to:-20,speed:65/(trioEnd-trioStart),start:trioStart,alongShaft:true,group},
       };
     });
@@ -75,12 +78,29 @@ function diagonalTunnel(drop=false,high=false){
 function rushGates(short=false){
   const layout=random=>{
     const heights=[[168,142,204],[188,130,214],[146,204,158],[198,154,112]][Math.min(3,Math.floor(random()*4))];
-    const speeds=[[24,76,32],[36,40,88],[28,64,76]][Math.min(2,Math.floor(random()*3))];
+    const approachMax=60+16*random();
     const count=short?2+Math.min(1,Math.floor(random()*2)):3+Math.min(1,Math.floor(random()*2));
+    // Sample continuous speeds, with each regular rear gate slightly slower.
+    // They retain visibly different velocities instead of all catching the
+    // first slow gate and being held to its speed by the separation guard.
+    let ceiling=approachMax;
+    const speeds=Array.from({length:count},(_,i)=>{
+      const floor=22+(count-i-1)*8,speed=floor+(ceiling-floor)*random();
+      ceiling=speed-6;return speed;
+    });
     const ys=[...heights,heights[0]-12].slice(0,count),xs=ys.map((_,i)=>i*156);
     if(!short){ys[ys.length-1]=Math.min(154,ys.at(-1));xs.push(xs.at(-1)+176);ys.push(104);}
     for(let i=1;i<ys.length;i++)ys[i]=Math.max(ys[i-1]-50,Math.min(ys[i-1]+50,ys[i]));
-    const pairs=ys.map((y,i)=>pair(xs[i],y-50,y+50,{safetyGroup:i,anchorEntry:false,motion:{type:'rush',speed:i===count?96:i===count-1?40:speeds[i],trigger:RUSH_APPROACH,hold:!short&&i===count?1.1:0}}));
+    if(!short){
+      // A slower final approach needs extra room before the fast follower
+      // catches the bird. Reserve that room instead of clamping its hold away.
+      const world=FINAL_REFERENCE.speed,lead=(RUSH_APPROACH+26)/world;
+      const holdAt=-96*lead/(world+96),front=speeds[count-1];
+      const separation=52+24+Math.abs(ys[count]-ys[count-1])*.8;
+      const spacing=Math.max(176,Math.ceil(world*((separation-front*lead)/(world+front)-holdAt))+8);
+      xs[count]=xs[count-1]+spacing;
+    }
+    const pairs=ys.map((y,i)=>pair(xs[i],y-50,y+50,{safetyGroup:i,anchorEntry:false,motion:{type:'rush',speed:i===count?96:speeds[i],trigger:RUSH_APPROACH,hold:!short&&i===count?1.1:0}}));
     // At 62 s the section ends with a fixed roof and a slowly rising floor.
     // The next pair is positioned from the follower's actual crossing/hold,
     // not its original unaccelerated x. This removes the long empty exit.

@@ -122,14 +122,18 @@ export function checkDifficulty(){
     }
     assert.ok(bank.pipes[0].bottomMotion.speed>10&&bank.pipes[0].bottomMotion.speed<13,'trio ascent spans the widescreen approach at a steady speed');
     assert.equal(bank.pipes[3].bottomMotion.speed,50);
-    assert.equal(bank.pipes[4].bottomMotion.speed,50,'following pair rises together at the same speed');
+    assert.equal(bank.pipes[4].bottomMotion.speed,50,'following pair shares its ascent speed');
     assert.ok(bank.pipes[3].bottomMotion.speed>bank.pipes[0].bottomMotion.speed,'following pair catches the trio while rising');
     const tail=bank.pipes[4],lead=bank.pipes[3];
-    const descentAt=1.06+.1;
+    const peak=p=>p.bottomMotion.start+(p.bottomMotion.from-p.bottomMotion.to)/p.bottomMotion.speed;
+    const leadPeak=peak(lead),tailPeak=peak(tail),descentAt=tailPeak+.1;
+    assert.ok(tailPeak>leadPeak+.3&&tailPeak<leadPeak+.6,'second floor reverses later, without holding at the peak');
     const tailDown=atTime(tail,descentAt+.1).bottom.y-atTime(tail,descentAt).bottom.y;
     const leadDown=atTime(lead,descentAt+.1).bottom.y-atTime(lead,descentAt).bottom.y;
     assert.ok(tailDown>leadDown+2,'trailing floor separates by descending faster');
-    for(const p of [lead,tail])assert.ok(atTime(p,1.07).bottom.y>atTime(p,1.06).bottom.y,'both pipes begin descending immediately at the shared reversal');
+    for(const p of [lead,tail])assert.ok(atTime(p,peak(p)+.01).bottom.y>atTime(p,peak(p)).bottom.y,'each pipe descends immediately at its own reversal');
+    const between=(leadPeak+tailPeak)/2;
+    assert.ok(atTime(lead,between+.01).bottom.y>atTime(lead,between).bottom.y&&atTime(tail,between+.01).bottom.y<atTime(tail,between).bottom.y,'one pipe returns while the following pipe is still rising');
     for(const p of bank.pipes.slice(0,5)){
       const motion=p.bottomMotion,duration=Math.abs(motion.to-motion.from)/motion.speed;
       const a=atTime(p,motion.start).bottom.y,b=atTime(p,motion.start+duration).bottom.y;
@@ -152,11 +156,11 @@ export function checkDifficulty(){
     assert.ok(Math.abs(pipeMotion(bank.pipes[0],0,'bottom').y-pipeMotion(bank.pipes[3],0,'bottom').y)>1,'groups do not move as one oversized opening');
     const p=bank.pipes[0],post=pipePose(p).top;
     assert.ok(finalPipeHits(p,{x:p.x+26+post.x+Math.sin(post.angle)*4,y:post.y-Math.cos(post.angle)*4,radius:12},336));
-    const leadStop=1.06+160/lead.bottomMotion.returnSpeed,tailStop=1.06+(tail.bottomMotion.returnTo-tail.bottomMotion.to)/tail.bottomMotion.returnSpeed;
+    const leadStop=leadPeak+160/lead.bottomMotion.returnSpeed,tailStop=tailPeak+(tail.bottomMotion.returnTo-tail.bottomMotion.to)/tail.bottomMotion.returnSpeed;
     assert.ok(Math.abs(leadStop-tailStop)<1e-8,'following pair stops simultaneously');
     for(const fraction of [.01,.25,.5,.75,.99]){
-      const time=1.06+(leadStop-1.06)*fraction;
-      assert.ok(atTime(tail,time+.001).bottom.y-atTime(tail,time).bottom.y>atTime(lead,time+.001).bottom.y-atTime(lead,time).bottom.y,'right pipe moves faster throughout the shared descent without a delayed start');
+      const time=tailPeak+(leadStop-tailPeak)*fraction;
+      assert.ok(atTime(tail,time+.001).bottom.y-atTime(tail,time).bottom.y>atTime(lead,time+.001).bottom.y-atTime(lead,time).bottom.y,'right pipe moves faster throughout the overlapping descent');
     }
     for(const p of [lead,tail]){
       assert.ok(atTime(p,leadStop).bottom.y>atTime(p,leadStop-.001).bottom.y,'both pipes are still descending just before their shared stop');
@@ -165,8 +169,11 @@ export function checkDifficulty(){
     const fixed=bank.pipes[5],fixedPose=atTime(fixed,-5).bottom;
     assert.equal(fixed.bottomMotion,undefined,'third pipe after the returning pair is stationary');
     for(let t=-5;t<8;t+=.17)assert.deepEqual(atTime(fixed,t).bottom,fixedPose,'third floor never participates in either moving group');
-    const wave=bank.pipes.slice(3,6).map(p=>atTime(p,leadStop+.1).bottom.y);
-    assert.ok(wave[1]>wave[0]+20&&wave[1]>wave[2]+20,'retracted pair and fixed third pipe make a high-low-high wave');
+    const teeth=bank.pipes.slice(3,6).map(p=>{const b=atTime(p,leadStop+.1).bottom;return{x:p.x+26+b.x,y:b.y};});
+    for(let i=1;i<teeth.length;i++){
+      assert.ok(Math.abs(teeth[i-1].y-teeth[i].y-12)<1e-7,'stopped caps form three evenly stepped short saw teeth');
+      assert.ok(Math.abs(teeth[i].x-teeth[i-1].x-(54*Math.SQRT2-12))<1e-7,'saw teeth have uniform horizontal spacing, without a deep middle dip');
+    }
     const slope=bank.pipes.slice(1,5).map(p=>{const top=pipePose(p).top;return top.y-(p.x+26+top.x);});
     assert.ok(Math.max(...slope)-Math.min(...slope)<1e-7,'stepped roof run remains cleanly aligned');
   }
@@ -183,8 +190,12 @@ export function checkDifficulty(){
     assert.equal(bank[3].bottomMotion.speed,bank[4].bottomMotion.speed,'following two pipes rise together in every variation');
     assert.ok(bank[4].bottomMotion.returnSpeed>bank[3].bottomMotion.returnSpeed,'following pair separates during retraction in every variation');
     const stops=bank.slice(3).map(p=>{const motion=p.bottomMotion;return motion.start+(motion.from-motion.to)/motion.speed+(motion.returnTo-motion.to)/motion.returnSpeed;});
-    assert.ok(Math.abs(stops[0]-stops[1])<1e-8,'every profile starts its return together and stops together');
-    for(const p of bank.slice(3))assert.ok(atTime(p,1.061).bottom.y>atTime(p,1.06).bottom.y,'every profile reverses both pipes without a hold');
+    assert.ok(Math.abs(stops[0]-stops[1])<1e-8,'every profile finishes both returns together');
+    assert.ok(bank[4].bottomMotion.start>bank[3].bottomMotion.start,'every profile staggers the following pipe');
+    for(const p of bank.slice(3)){
+      const motion=p.bottomMotion,peak=motion.start+(motion.from-motion.to)/motion.speed;
+      assert.ok(atTime(p,peak+.001).bottom.y>atTime(p,peak).bottom.y,'every profile reverses each pipe without a hold');
+    }
   }
   assert.equal(profiles.size,3,'floor groups have three distinct bounded movement profiles');
   for(const ground of [336,575])for(const width of [288,614.4])for(const value of [.1,.5,.9]){
@@ -250,10 +261,18 @@ export function checkDifficulty(){
   assert.ok(pipePose(follower).center<=112,'the follower is high and requires flying upward');
   for(const q of rush.corePipes)assert.equal(pipePose(q).bottom.y-pipePose(q).top.y,100,'rush gaps retain the reference 100-pixel opening');
   assert.ok(rush.corePipes.slice(1,-1).every((q,i)=>Math.abs(q.x-rush.corePipes[i].x-156)<1e-7),'ordinary rush gates are closer together');
-  const sizes=new Set(),exits=new Set();
+  const sizes=new Set(),exits=new Set(),regularSpeeds=new Set();
   for(let seed=1;seed<=60;seed++){
     const varied=chunkOfKind('left-rush-gates',{random:seeded(seed*183)}),gates=varied.pipes.filter(p=>p.motion?.type==='rush');
     sizes.add(gates.length);exits.add(Boolean(varied.pipes.at(-1).bottomMotion));
+    const regular=gates.filter(p=>!p.motion.hold);
+    regular.forEach((p,i)=>{
+      assert.ok(p.motion.speed>=22&&p.motion.speed<=76,'ordinary rush speed is sampled from a bounded continuous range');
+      regularSpeeds.add(p.motion.speed.toFixed(3));
+      if(i)assert.ok(regular[i-1].motion.speed-p.motion.speed>=6-1e-7,'regular approaches have distinct velocities instead of forming a same-speed convoy');
+      const a=pipeMotion({...p,referenceBirdX:p.x+26-118}).x,b=pipeMotion({...p,referenceBirdX:p.x+26-118+1.18}).x;
+      assert.ok(Math.abs((a-b)/.01-p.motion.speed)<1e-7,'rendered approach retains its distinct speed with the separation guard active');
+    });
     for(let time=-5;time<14;time+=.037){
       const clock=varied.startX+26+time*118;
       gates.forEach(p=>{p.referenceBirdX=clock;});
@@ -264,6 +283,7 @@ export function checkDifficulty(){
     }
   }
   assert.equal(sizes.size,2,'full left-moving sections vary between four and five moving pairs');
+  assert.ok(regularSpeeds.size>100,'rush speed variation is continuous rather than a few fixed presets');
   assert.deepEqual([...exits],[false],'rising floor is no longer attached to every rush section');
   const shortSizes=new Set();
   for(let seed=1;seed<=60;seed++){
