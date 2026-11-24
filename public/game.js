@@ -211,6 +211,7 @@ function frame(time) {
   const pose = game.presentation();
   const upperOverlays=[];
   const drawFinalPost=(pipe,post,up)=>{
+    if(up&&pipe.noTop)return;
     const length=pipeShaftLength(pipe,ground,up);
     ctx.save();ctx.translate(pipe.x+pose.pipeOffset+pipe.width/2+post.x,post.y);ctx.rotate(post.angle);
     drawPipe(ctx,-pipe.width/2,up?-length:0,pipe.width,length,up);ctx.restore();

@@ -3,6 +3,7 @@
 export const PASSAGE = { height:92, slope:.4, birdRadius:12, edgeMargin:76 };
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export function postVertices(pipe,post,up,length){
+  if(up&&pipe.noTop)return [];
   const a=up?-length:0,b=up?0:length,co=Math.cos(post.angle),si=Math.sin(post.angle);
   return [[-pipe.width/2,a],[pipe.width/2,a],[pipe.width/2,b],[-pipe.width/2,b]].map(([x,y])=>[pipe.x+pipe.width/2+post.x+x*co-y*si,post.y+x*si+y*co]);
 }

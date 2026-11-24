@@ -9,16 +9,8 @@ const vertical=(id,source,centers,gap,spacing=pitch,motion)=>({
   pairs:centers.map((y,i)=>pair(i*spacing,y-gap/2,y+gap/2,{motion})),
 });
 const rail=(from,to,speed,start=0,extra={})=>({type:'rail',from,to,speed,start,...extra});
-const risingExit=(dx,tunnel=false)=>pair(dx,40,264,{safetyGroup:20,anchorEntry:false,minimumGap:88,
-  bottomMotion:rail(0,-136,24,(dx+(tunnel?0:160))/118-(264-140)/24)});
-// Give the player headroom to climb before the floor closes the final opening.
-const openApproach=pairs=>pairs.map((p,i)=>({...p,approachCeiling:i>=pairs.length-3?112-(i-(pairs.length-3))*20:undefined}));
-function optionalExit(chunk){
-  const fixed=chunk.pairs;
-  chunk.layout=random=>random()<.4?[...openApproach(fixed),risingExit(fixed.at(-1).dx+pitch,true)]:fixed;
-  chunk.exitAtLastGate=true;
-  return chunk;
-}
+const risingExit=()=>pair(0,40,264,{safetyGroup:20,anchorEntry:false,minimumGap:26,risingFloor:true,
+  bottomMotion:{type:'sweep',from:0,to:-198,speed:24,start:-(264-140)/24}});
 function rising(id,window=false){
   const chunk=vertical(id,[15,18],[168,168,168],124,pitch,rail(32,-64,42,-1.5));
   chunk.family='rising';chunk.motif='rising';chunk.minEntry=156;
@@ -27,9 +19,9 @@ function rising(id,window=false){
   return chunk;
 }
 function bank(id,{continuation=false}={}){
-  // 18–22 s: low preview, shared ascent, then a complete retraction. The
-  // following two posts rise together and separate on their faster descent.
-  const roofV=[98,-60,-112,-108,-160],floorV=[223,223,223,292,292];
+  // 18–22 s: the leading trio rises and stays extended. The following two
+  // posts rise together, separate on descent, and finish aligned together.
+  const floorV=[223,223,223,309,309];
   const profiles=[
     {trio:22,start:-.5,pair:54,lead:82,tail:116},
     {trio:26,start:-.67,pair:50,lead:72,tail:104},
@@ -38,24 +30,25 @@ function bank(id,{continuation=false}={}){
   const layout=random=>{
     const profile=profiles[Math.min(2,Math.floor(random()*3))];
     const pairs=floorV.map((v,i)=>{
-      const group=i<3?0:1,tu=156.5+i*54,bu=-182+i*54;
-      const tx=(tu-roofV[i])*Math.SQRT1_2-3,ty=(tu+roofV[i])*Math.SQRT1_2-64;
+      const group=i<3?0:1,bu=-182+i*54;
+      const tx=i===0?96:292+(i-1)*54*Math.SQRT1_2,ty=i===0?72:50+(i-1)*54*Math.SQRT1_2;
       const bx=(bu+v)*Math.SQRT1_2-3,by=(v-bu)*Math.SQRT1_2-64,dx=Math.min(tx,bx)-26;
-      return {dx,top:[tx-dx-26,ty+64,Math.PI/4],bottom:[bx-dx-26,by+64,-Math.PI/4],
-        bottomMotion:group?{type:'bank',from:125,to:-35,speed:profile.pair,start:1.06-160/profile.pair,returnSpeed:i===4?profile.tail:profile.lead,alongShaft:true,group}
-          :{type:'bank',from:45,to:-20,speed:profile.trio,start:profile.start,returnSpeed:profile.trio,alongShaft:true,group},
+      return {dx,top:[tx-dx-26,ty+64,Math.PI/4],noTop:i===4,roofGroup:i?1:0,minimumShaft:group?8:24,bottom:[bx-dx-26,by+64,-Math.PI/4],
+        bottomMotion:group?{type:'bank',from:125,to:-35,speed:profile.pair,start:1.06-160/profile.pair,returnSpeed:i===4?profile.tail:profile.lead,
+          returnDelay:i===4?160/profile.lead-160/profile.tail:0,alongShaft:true,group}
+          :{type:'sweep',from:45,to:-20,speed:profile.trio,start:profile.start,alongShaft:true,group},
       };
     });
     if(continuation)pairs.push(pair(530,138,282,{motion:rail(-40,50,48,-.5),safetyGroup:1,allowRoofOverlap:true,afterFloor:true}));
     return pairs;
   };
   const chunk={id,source:[18,23],family:'diagonal',motif:'floor-bank',diagonal:true,anchor:168,minEntry:168,maxEntry:168,exitCenter:196,entryInset:64,clearance:3,
-    pairs:layout(()=>.5),layout,
+    alignedRoof:true,pairs:layout(()=>.5),layout,
   };
   if(continuation)chunk.exitAtLastGate=true;
   return chunk;
 }
-function diagonalTunnel(drop=false){
+function diagonalTunnel(drop=false,high=false){
   // 48–51 s: measured cap lengths on a 54-pixel perpendicular grid. Jitter
   // only along the shafts preserves the captured 45-degree angles and gaps.
   const topV=[11,-44.5,-68.45,-145.1,-143,-241.9],bottomV=[208,226.84,309.78,419.03,444.77,528.84];
@@ -65,26 +58,26 @@ function diagonalTunnel(drop=false){
     const tx=(tu-tv)*Math.SQRT1_2-78.4888527117,ty=(tu+tv)*Math.SQRT1_2-64;
     const bx=(bu+bv)*Math.SQRT1_2-78.4888527117,by=(bv-bu)*Math.SQRT1_2-64,dx=Math.min(tx,bx);
     const extension=i===5?92:0;
-    return {dx,top:[tx-dx,ty+64,Math.PI/4],bottom:[bx-dx-extension,by+64-extension,-Math.PI/4]};
+    return {dx,top:[tx-dx,ty+64-(high?24:0),Math.PI/4],bottom:[bx-dx-extension,by+64-extension-(high?40:0),-Math.PI/4]};
   });
     const floor=drop?270:278;
     pairs.push(pair(550,178,floor,{top:[0,242,-Math.PI/4],bottom:[0,floor+64,Math.PI/4],allowRoofOverlap:true,overlayAfter:true,joinFloor:true,anchorEntry:false,safetyGroup:10}));
     return pairs;
   };
-  return {id:drop?'diagonal-drop-exit':'stationary-diagonal-tunnel',source:drop?[48,53]:[48,51],family:'diagonal',motif:'angled-tunnel',diagonal:true,passageHeight:72,anchor:92,maxEntry:180,entryInset:32,clearance:3,pairs:layout(()=>.5),layout};
+  return {id:high?'high-diagonal-tunnel':drop?'diagonal-drop-exit':'stationary-diagonal-tunnel',source:drop?[48,53]:[48,51],family:'diagonal',motif:'angled-tunnel',diagonal:true,passageHeight:high?64:72,anchor:92,minEntry:high?168:undefined,maxEntry:180,entryInset:32,clearance:3,pairs:layout(()=>.5),layout};
 }
 function rushGates(short=false){
   const layout=random=>{
     const heights=[[168,142,204],[188,130,214],[146,204,158],[198,154,112]][Math.min(3,Math.floor(random()*4))];
     const speeds=[[24,76,32],[36,40,88],[28,64,76]][Math.min(2,Math.floor(random()*3))];
-    const count=short?2+Math.min(1,Math.floor(random()*2)):3+Math.min(1,Math.floor(random()*2)),withExit=random()<(short ? .3 : .5);
-    const ys=[...heights,heights[0]-12].slice(0,count),xs=ys.map((_,i)=>i*188);
-    if(!short){ys[ys.length-1]=Math.min(164,ys.at(-1));xs.push(xs.at(-1)+200);ys.push(104);}
-    let pairs=ys.map((y,i)=>pair(xs[i],y-55,y+55,{safetyGroup:i,anchorEntry:false,motion:{type:'rush',speed:i===count?96:i===count-1?40:speeds[i],trigger:RUSH_APPROACH,hold:!short&&i===count?1.1:0}}));
+    const count=short?2+Math.min(1,Math.floor(random()*2)):3+Math.min(1,Math.floor(random()*2));
+    const ys=[...heights,heights[0]-12].slice(0,count),xs=ys.map((_,i)=>i*156);
+    if(!short){ys[ys.length-1]=Math.min(154,ys.at(-1));xs.push(xs.at(-1)+176);ys.push(104);}
+    for(let i=1;i<ys.length;i++)ys[i]=Math.max(ys[i-1]-50,Math.min(ys[i-1]+50,ys[i]));
+    const pairs=ys.map((y,i)=>pair(xs[i],y-50,y+50,{safetyGroup:i,anchorEntry:false,motion:{type:'rush',speed:i===count?96:i===count-1?40:speeds[i],trigger:RUSH_APPROACH,hold:!short&&i===count?1.1:0}}));
     // At 62 s the section ends with a fixed roof and a slowly rising floor.
     // The next pair is positioned from the follower's actual crossing/hold,
     // not its original unaccelerated x. This removes the long empty exit.
-    if(withExit){pairs=openApproach(pairs);pairs.push(risingExit(xs.at(-1)+(short?pitch:31)));}
     return pairs;
   };
   return {id:short?'short-left-rush-gates':'left-rush-gates',source:short?[52,57]:[52,64],family:'rush',motif:'rush',entryInset:160,exitAtLastGate:true,clearance:24,pairs:layout(()=>.5),layout};
@@ -118,7 +111,7 @@ function tunnelPlunger(){
   moving.motion={type:'plunger',from:-76,to:76,speed:210,start:(moving.dx-38)/118,returnSpeed:210,slowAt:(moving.dx+14)/118,afterSpeed:60};
   return chunk;
 }
-export const FINAL_OPENING_CHUNK=vertical('opening-moving-pair',[6,10],[168,168,168],124,156);
+export const FINAL_OPENING_CHUNK=vertical('opening-moving-pair',[6,10],[168,144,202],124,156);
 FINAL_OPENING_CHUNK.family='opening';
 FINAL_OPENING_CHUNK.pairs[0].motion=rail(-50,60,50,-1);
 export const CAPTURED_FINAL_CHUNKS=[
@@ -129,14 +122,15 @@ export const CAPTURED_FINAL_CHUNKS=[
   bank('diagonal-rise'),
   bank('diagonal-fall',{continuation:true}),
   bank('displaced-roof-bank'),
-  diagonalTunnel(),diagonalTunnel(true),
-  optionalExit(vertical('short-high-tunnel',[34,36.5],[168,154,144,154],112)),
-  optionalExit(vertical('short-low-tunnel',[36.5,39],[168,182,192,182],112)),
+  diagonalTunnel(),diagonalTunnel(true),diagonalTunnel(false,true),
+  vertical('short-high-tunnel',[34,36.5],[168,154,144,154],112),
+  vertical('short-low-tunnel',[36.5,39],[168,182,192,182],112),
   {id:'stepped-roof-tunnel',source:[34,37],family:'tunnel',clearance:24,
     pairs:[[116,236],[98,224],[132,252],[110,260],[154,296]].map(([a,b],i)=>pair(i*pitch,a,b))},
   {id:'floor-valley-tunnel',source:[39,43],family:'tunnel',clearance:24,
     pairs:[[128,244],[122,264],[134,280],[118,258],[126,246]].map(([a,b],i)=>pair(i*pitch,a,b))},
   rushGates(),
   rushGates(true),
+  {id:'rising-floor-interlude',family:'interlude',motif:'interlude',clearance:24,exitAtLastGate:true,pairs:[risingExit()]},
   longTunnel('long-dropping-tunnel'),longTunnel('long-low-tunnel',true),
 ];

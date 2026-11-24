@@ -1,18 +1,22 @@
 import assert from 'node:assert/strict';
-import { PHYSICS } from '../public/engine.mjs';
-import { FINAL_CHUNK_KINDS,FINAL_OPENING_ID,FINAL_PIPE_SPEED,FinalDirector,createFinalChunk,pipePose,pipeShaftLength,flightTarget } from '../public/difficulty.mjs';
+import { Game,PHYSICS } from '../public/engine.mjs';
+import { FINAL_CHUNK_KINDS,FINAL_OPENING_ID,FINAL_PIPE_SPEED,FinalDirector,createFinalChunk,pipePose,pipeShaftLength,flightTarget,chunkOpening } from '../public/difficulty.mjs';
 import { postVertices,clipToGround,slabRange } from '../public/pipe-safety.mjs';
 import { CAPTURED_FINAL_CHUNKS,FINAL_OPENING_CHUNK } from '../public/final-chunks.mjs';
 const seeded=seed=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
 export function sequence(kinds,ground=336,entryCenter=ground/2,random=seeded(17)){
-  let x=300,entry=entryCenter;const chunks=[],pipes=[];
-  for(const kind of kinds){const chunk=createFinalChunk({x,ground,entryCenter:entry,referenceBirdX:188,kind,id:chunks.length,random});chunks.push(chunk);pipes.push(...chunk.pipes);x=chunk.nextX;entry=chunk.exitCenter;}
+  let x=300,entry=entryCenter,entryPort,previousKind;const chunks=[],pipes=[];
+  for(const kind of kinds){const chunk=createFinalChunk({x,ground,entryCenter:entry,entryPort,previousKind,referenceBirdX:188,kind,id:chunks.length,random});chunks.push(chunk);pipes.push(...chunk.pipes);x=chunk.nextX;entry=chunk.exitCenter;entryPort=chunk.exitPort;previousKind=kind;}
   return {chunks,pipes,ground,entryCenter};
 }
 function targetAt(chunks,x,clockX=x){
   const guided=chunks.find(c=>c.guidedEntry&&x>=c.safePath[0][0]&&x<c.startX);
   if(guided)return flightTarget(guided,x,clockX);
   return flightTarget(chunks.find(c=>x<c.endX+20)||chunks.at(-1),x,clockX);
+}
+function sharedHandoff(left,right,ground){
+  const at=right.startX-12,a=chunkOpening(left.pipes,at,ground,left.exitCenter),b=chunkOpening(right.pipes,at,ground,left.exitCenter);
+  return Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);
 }
 // Search actual flap/no-flap inputs at 50 ms decision intervals. Every arc is
 // integrated at the game's 60 Hz, with at least 200 ms between presses. The beam
@@ -85,6 +89,8 @@ export function checkPassages(){
     // consecutive rare long sections cannot occur in its schedule either.
     if(left===right||a.rare&&b.rare||!b.rare&&(a.family===b.family||a.motif&&a.motif===b.motif))continue;
     const scene=sequence([left,right]);
+    assert.ok(sharedHandoff(...scene.chunks,336)>=80-1e-7,left+' -> '+right+': handoff openings must align with comfortable shared clearance');
+    for(const chunk of scene.chunks)assert.ok(chunk.safePath.every((n,i)=>!i||n[0]>chunk.safePath[i-1][0]),'connector route must advance without folded nodes');
     for(const phase of [0,.25,.5,.75,1]){
       const clock=scene.chunks[0].startX+phase*700;
       scene.pipes.forEach(p=>{p.referenceBirdX=clock;});
@@ -118,6 +124,32 @@ export function checkPassages(){
     }
     for(const ground of [336,575]){const result=flyPassage(sequence(order,ground,ground/2,seeded(seed)));assert.ok(result.ok,'seed '+seed+', ground '+ground+': '+JSON.stringify(result));}
   }
+  // Reproduce the reported closing-floor -> rising-trio handoff in the actual
+  // engine queue. Core movement stays unchanged; visible gates connect heights.
+  const game=new Game({width:614.4,height:384,random:()=>.1});
+  game.difficulty='final';game.finalQueued=true;game.nextChunkX=300;game.lastExitCenter=168;
+  game.finalDirector={next:id=>id?'rising-trio':'rising-floor-interlude'};
+  game.appendFinalChunk();const outgoing=game.pipes.slice(),port={...game.lastExitPort},start=game.nextChunkX;
+  game.appendFinalChunk();const incoming=game.pipes.filter(p=>p.chunkId===1),bridges=incoming.filter(p=>p.connector),core=incoming.filter(p=>!p.connector);
+  assert.equal(bridges.length,2,'two ordinary gates visibly join the high closing gap to the rising trio');
+  assert.ok(sharedHandoff({pipes:outgoing,exitCenter:port.center},{pipes:incoming,startX:start},336)>=80);
+  const bare=createFinalChunk({x:start,ground:336,entryCenter:port.center,referenceBirdX:188,kind:'rising-trio',random:()=>.1});
+  assert.ok(sharedHandoff({pipes:outgoing,exitCenter:port.center},bare,336)<56,'regression reproduces the former pinched handoff');
+  for(let i=0;i<core.length;i++){
+    assert.deepEqual(core[i].motion,bare.corePipes[i].motion,'joining chunks does not change recorded movement');
+    assert.deepEqual(core[i].topRecord,bare.corePipes[i].topRecord);assert.deepEqual(core[i].bottomRecord,bare.corePipes[i].bottomRecord);
+  }
+  game.resize(288,623);
+  assert.ok(game.lastExitPort.center>=game.lastExitPort.top&&game.lastExitPort.center<=game.lastExitPort.bottom,'resize recomputes the queued exit from actual geometry');
+  const resizedLeft=game.pipes.filter(p=>p.chunkId===0),resizedRight=game.pipes.filter(p=>p.chunkId===1);
+  assert.ok(sharedHandoff({pipes:resizedLeft,exitCenter:port.center+(575-336)/2},{pipes:resizedRight,startX:resizedRight[0].x},575)>=80,'reported handoff remains aligned after resizing');
+  // Include extreme entry heights and very tall views in the aperture check.
+  for(const ground of [575,960])for(const entry of [100,ground/2,ground-100])for(const left of FINAL_CHUNK_KINDS)for(const right of FINAL_CHUNK_KINDS){
+    const a=CAPTURED_FINAL_CHUNKS.find(c=>c.id===left),b=CAPTURED_FINAL_CHUNKS.find(c=>c.id===right);
+    if(left===right||a.rare&&b.rare||!b.rare&&(a.family===b.family||a.motif&&a.motif===b.motif))continue;
+    const scene=sequence([left,right],ground,entry);
+    assert.ok(sharedHandoff(...scene.chunks,ground)>=80-1e-7,'tall-view handoff '+left+' -> '+right+', ground '+ground+', entry '+entry);
+  }
   for(const entry of [100,126,210,236]){
     const result=flyPassage(sequence([FINAL_OPENING_ID,'rising-trio','stationary-tunnel'],336,entry));
     assert.ok(result.ok,'classic-to-final entry '+entry+': '+JSON.stringify(result));
@@ -143,5 +175,5 @@ export function checkPassages(){
     const result=flyPassage(sequence(['stationary-tunnel','short-left-rush-gates','tunnel-plunger'],336,168,random));
     assert.ok(result.ok,'short rush height '+h+', speed '+speed+', count '+count+', exit '+exit+': '+JSON.stringify(result));
   }
-  return 'Passages: '+joins+' director-eligible joins keep usable clearances; only designated upper exits overlap one roof pipe. Long sections, every rush profile and seeded portrait/landscape flights pass with original gravity/flaps.';
+  return 'Passages: '+joins+' director-eligible joins share at least 80 native pixels at handoff and remain flyable. The closing-floor regression, tall views, every rush profile and seeded flights pass with original physics.';
 }

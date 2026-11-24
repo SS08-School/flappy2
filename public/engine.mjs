@@ -1,5 +1,5 @@
 // Native-pixel measurements from the supplied v1.3 gameplay reference.
-import { FINAL_TEST_SCORE, FINAL_PIPE_SPEED, FinalDirector, createFinalChunk, pipePose, finalPipeHits, pipeBounds, pipeScoreX, fitFloorVisibility } from './difficulty.mjs';
+import { FINAL_TEST_SCORE, FINAL_PIPE_SPEED, FinalDirector, createFinalChunk, pipePose, finalPipeHits, pipeBounds, pipeScoreX, fitFloorVisibility, chunkOpening } from './difficulty.mjs';
 export const METRICS = { width: 288, height: 384, maxAspectRatio: 16 / 10, groundHeight: 48, birdWidth: 34, birdHeight: 24, pipeWidth: 52 };
 const birdX = width => 90 + (width - METRICS.width) * .3;
 const maxWorldWidth = METRICS.height * METRICS.maxAspectRatio;
@@ -25,7 +25,7 @@ export class Game {
     this.nextPipeAt = 0;
     this.difficulty = 1; this.chunkSerial = 0; this.lastChunkKind = null;
     this.classicSpawned = 0; this.finalQueued = false; this.nextChunkX = null;
-    this.lastExitCenter = null;
+    this.lastExitCenter = null; this.lastExitPort = null;
     this.finalDirector = null;
   }
   resize(width, height) {
@@ -36,6 +36,7 @@ export class Game {
     const shift = this.bird.x - oldX;
     if (this.nextChunkX !== null) this.nextChunkX += shift;
     if (this.lastExitCenter !== null) this.lastExitCenter += (this.ground - oldGround) / 2;
+    if(this.lastExitPort)for(const key of ['top','bottom','center'])this.lastExitPort[key]+=(this.ground-oldGround)/2;
     for (const pipe of this.pipes) {
       pipe.x += shift;
       pipe.center = Math.max(pipe.gap / 2 + 30, Math.min(this.ground - pipe.gap / 2 - 30, pipe.center / oldGround * this.ground));
@@ -47,6 +48,11 @@ export class Game {
     }
     fitFloorVisibility(this.pipes,this.ground);
     for(const pipe of this.pipes)if(pipe.level==='final')Object.assign(pipe,pipePose(pipe));
+    const tail=this.pipes.filter(p=>p.level==='final'&&p.chunkId===this.chunkSerial-1);
+    if(tail.length&&this.nextChunkX!==null){
+      this.lastExitPort=chunkOpening(tail,this.nextChunkX-12,this.ground,Math.max(50,Math.min(this.ground-50,this.lastExitCenter??this.ground/2)));
+      this.lastExitCenter=this.lastExitPort.center;
+    }
   }
   presentation() {
     if (!['playing', 'falling'].includes(this.state)) return { birdY: this.bird.y, pipeOffset: 0 };
@@ -71,6 +77,7 @@ export class Game {
     const chunk = createFinalChunk({
       x: this.nextChunkX ?? Math.max(this.pipeStartX, last ? last.x + PHYSICS.spacing : this.pipeStartX),
       ground: this.ground, entryCenter: this.lastExitCenter ?? last?.center ?? this.ground / 2,
+      entryPort: this.lastExitPort,
       previousKind: this.lastChunkKind, id, random: this.random, width: METRICS.pipeWidth,
       kind: this.finalDirector.next(id),
       referenceBirdX: this.bird.x,
@@ -78,6 +85,7 @@ export class Game {
     this.pipes.push(...chunk.pipes); this.lastChunkKind = chunk.kind;
     this.nextChunkX = chunk.nextX;
     this.lastExitCenter = chunk.exitCenter;
+    this.lastExitPort = chunk.exitPort;
   }
   activateFinal() {
     if (this.difficulty === 'final' || this.score < FINAL_TEST_SCORE) return;
