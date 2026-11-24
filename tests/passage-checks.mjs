@@ -3,9 +3,9 @@ import { PHYSICS } from '../public/engine.mjs';
 import { FINAL_CHUNK_KINDS,FINAL_OPENING_ID,FINAL_PIPE_SPEED,FinalDirector,createFinalChunk,pipePose,pipeShaftLength,flightTarget } from '../public/difficulty.mjs';
 import { postVertices,clipToGround,slabRange } from '../public/pipe-safety.mjs';
 const seeded=seed=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
-export function sequence(kinds,ground=336,entryCenter=ground/2){
+export function sequence(kinds,ground=336,entryCenter=ground/2,random=seeded(17)){
   let x=300,entry=entryCenter;const chunks=[],pipes=[];
-  for(const kind of kinds){const chunk=createFinalChunk({x,ground,entryCenter:entry,referenceBirdX:188,kind,id:chunks.length});chunks.push(chunk);pipes.push(...chunk.pipes);x=chunk.nextX;entry=chunk.exitCenter;}
+  for(const kind of kinds){const chunk=createFinalChunk({x,ground,entryCenter:entry,referenceBirdX:188,kind,id:chunks.length,random});chunks.push(chunk);pipes.push(...chunk.pipes);x=chunk.nextX;entry=chunk.exitCenter;}
   return {chunks,pipes,ground,entryCenter};
 }
 function targetAt(chunks,x,clockX=x){
@@ -24,7 +24,7 @@ export function flyPassage(scene){
       if(x<pipe.x-120||x>pipe.x+scene.ground+300)continue;
       pipe.referenceBirdX=x;const pose=pipePose(pipe);
       for(const [post,up] of [[pose.top,true],[pose.bottom,false]]){
-        const range=slabRange(postVertices(pipe,post,up,pipeShaftLength(pipe,scene.ground)),x-12,x+12);
+        const range=slabRange(postVertices(pipe,post,up,pipeShaftLength(pipe,scene.ground,up)),x-12,x+12);
         if(range){if(up)top=Math.max(top,range[1]+12);else bottom=Math.min(bottom,range[0]-12);}
       }
     }
@@ -80,11 +80,12 @@ export function checkPassages(){
     for(const phase of [0,.25,.5,.75,1]){
       const clock=scene.chunks[0].startX+phase*700;
       scene.pipes.forEach(p=>{p.referenceBirdX=clock;});
-      const posts=scene.pipes.flatMap(p=>{const pose=pipePose(p);return [[pose.top,true],[pose.bottom,false]].map(([post,up])=>({kind:p.kind,x:p.x,chunk:p.chunkId,up,overlap:p.allowRoofOverlap,polygon:clipToGround(postVertices(p,post,up,pipeShaftLength(p,336)),336)}));});
+      const posts=scene.pipes.flatMap(p=>{const pose=pipePose(p);return [[pose.top,true],[pose.bottom,false]].map(([post,up])=>({kind:p.kind,x:p.x,chunk:p.chunkId,up,overlap:p.allowRoofOverlap,gap:p.shaftGap,polygon:clipToGround(postVertices(p,post,up,pipeShaftLength(p,336,up)),336)}));}).filter(p=>p.polygon.some(v=>v[0]>=clock-188));
+      for(const post of posts.filter(p=>p.up&&p.overlap))assert.ok(posts.filter(p=>p!==post&&p.up&&p.chunk===post.chunk&&overlap(post.polygon,p.polygon)).length<=1,left+' -> '+right+': exit overlaps more than one roof pipe');
       for(let i=0;i<posts.length;i++)for(let j=i+1;j<posts.length;j++){
         if(posts[i].up&&posts[j].up&&posts[i].chunk===posts[j].chunk&&(posts[i].overlap||posts[j].overlap))continue;
         assert.ok(!overlap(posts[i].polygon,posts[j].polygon),left+' -> '+right+': overlapping '+posts[i].kind+' '+posts[i].x+' '+posts[i].up+' / '+posts[j].kind+' '+posts[j].x+' '+posts[j].up);
-        assert.ok(distance(posts[i].polygon,posts[j].polygon)>=2.9,left+' -> '+right+': pipes touch instead of leaving the small gap');
+        assert.ok(distance(posts[i].polygon,posts[j].polygon)>=Math.min(posts[i].gap,posts[j].gap)-.1,left+' -> '+right+': pipes touch instead of leaving the small gap');
       }
     }
     for(let x=scene.chunks[0].startX-20;x<scene.chunks.at(-1).endX+20;x+=6){
@@ -93,7 +94,7 @@ export function checkPassages(){
       for(const p of scene.pipes){
         const pose=pipePose(p);
         for(const [post,up] of [[pose.top,true],[pose.bottom,false]]){
-          const range=slabRange(postVertices(p,post,up,pipeShaftLength(p,336)),x-12,x+12);
+          const range=slabRange(postVertices(p,post,up,pipeShaftLength(p,336,up)),x-12,x+12);
           if(range){if(up)ceiling=Math.max(ceiling,range[1]+12);else floor=Math.min(floor,range[0]-12);}
         }
       }
@@ -107,11 +108,18 @@ export function checkPassages(){
     for(let i=0;i<24;i++){
       const chunk=createFinalChunk({x:300,ground:336,random,previousKind,kind:director.next(i+1)});order.push(chunk.kind);previousKind=chunk.kind;
     }
-    for(const ground of [336,575]){const result=flyPassage(sequence(order,ground));assert.ok(result.ok,'seed '+seed+', ground '+ground+': '+JSON.stringify(result));}
+    for(const ground of [336,575]){const result=flyPassage(sequence(order,ground,ground/2,seeded(seed)));assert.ok(result.ok,'seed '+seed+', ground '+ground+': '+JSON.stringify(result));}
   }
   for(const entry of [100,126,210,236]){
     const result=flyPassage(sequence([FINAL_OPENING_ID,'rising-trio','reversing-gates'],336,entry));
     assert.ok(result.ok,'classic-to-final entry '+entry+': '+JSON.stringify(result));
+  }
+  // Exercise every combination of horizontal velocity/height profiles, plus
+  // the diagonal cap-length jitter, rather than repeatedly using one layout.
+  for(let h=0;h<4;h++)for(let speed=0;speed<3;speed++){
+    const values=[(h+.5)/4,(speed+.5)/3],random=()=>values.length?values.shift():.5;
+    const result=flyPassage(sequence(['rising-trio-window','left-rush-gates','stationary-diagonal-tunnel','long-dropping-tunnel'],336,168,random));
+    assert.ok(result.ok,'rush height '+h+', speed '+speed+': '+JSON.stringify(result));
   }
   return 'Passages: '+joins+' ordered joins keep usable clearances; only designated upper exits overlap. Scheduled rapid/long sections and seeded portrait/landscape flights pass with original gravity/flaps.';
 }

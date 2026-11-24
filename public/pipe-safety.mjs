@@ -35,7 +35,7 @@ export function pathHeight(nodes,x){
   for(let i=1;i<nodes.length;i++)if(x<=nodes[i][0]){const a=nodes[i-1],b=nodes[i],t=(x-a[0])/(b[0]-a[0]);return a[1]+(b[1]-a[1])*t;}
   return nodes.at(-1)[1];
 }
-export function fitPassage({pipes,x,nextX,ground,entryCenter,pose,envelope,length}){
+export function fitPassage({pipes,x,nextX,ground,entryCenter,pose,envelope,length,height=PASSAGE.height}){
   const first=pose(pipes[0]),entry=clamp(entryCenter??first.center,PASSAGE.edgeMargin,ground-PASSAGE.edgeMargin);
   const nodes=[[x-32,entry],[x,entry]];
   for(const pipe of pipes){
@@ -48,16 +48,16 @@ export function fitPassage({pipes,x,nextX,ground,entryCenter,pose,envelope,lengt
   for(let at=x-32;at<=nextX+32;at+=4)xs.add(at);
   for(const pipe of pipes){
     const shape=envelope(pipe);
-    for(const [post,up] of [[shape.top,true],[shape.bottom,false]])for(const [at] of postVertices(pipe,post,up,length(pipe,ground)))for(const dx of [-PASSAGE.birdRadius,PASSAGE.birdRadius])if(at+dx>=x-32&&at+dx<=nextX+32)xs.add(at+dx);
+    for(const [post,up] of [[shape.top,true],[shape.bottom,false]])for(const [at] of postVertices(pipe,post,up,length(pipe,ground,up)))for(const dx of [-PASSAGE.birdRadius,PASSAGE.birdRadius])if(at+dx>=x-32&&at+dx<=nextX+32)xs.add(at+dx);
   }
   for(const pipe of pipes){
     const shape=envelope(pipe);
     for(const [post,up] of [[shape.top,true],[shape.bottom,false]]){
-      const polygon=postVertices(pipe,post,up,length(pipe,ground));let correction=0;
+      const polygon=postVertices(pipe,post,up,length(pipe,ground,up));let correction=0;
       for(const at of xs){
         const range=slabRange(polygon,at-PASSAGE.birdRadius,at+PASSAGE.birdRadius);if(!range)continue;
         const y=pathHeight(nodes,at);
-        correction=Math.max(correction,up?range[1]-(y-PASSAGE.height/2):(y+PASSAGE.height/2)-range[0]);
+        correction=Math.max(correction,up?range[1]-(y-height/2):(y+height/2)-range[0]);
       }
       if(correction>1e-7){const key=up?'upperRetraction':'lowerRetraction';pipe[key]=(pipe[key]||0)+correction+1;}
     }

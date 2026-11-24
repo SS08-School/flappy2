@@ -130,7 +130,7 @@ export class Game {
       if (this.nextChunkX !== null) this.nextChunkX -= delta;
       for (const pipe of this.pipes) {
         pipe.x -= delta;
-        if (pipe.level === 'final') Object.assign(pipe, pipePose(pipe));
+        if (pipe.level === 'final') { pipe.referenceBirdX = this.bird.x; Object.assign(pipe, pipePose(pipe)); }
       }
       while (!this.finalQueued && this.elapsed + 1e-10 >= this.nextPipeAt) {
         if (this.classicSpawned >= FINAL_TEST_SCORE) {

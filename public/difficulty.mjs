@@ -8,13 +8,25 @@ export const PIPE_EXPOSURE={cap:26,ordinaryShaft:24,rapidShaft:2};
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 export class FinalDirector {
   constructor(random=Math.random){
-    this.random=random;this.nextRapid=8+Math.floor(random()*3);this.nextLong=5+Math.floor(random()*3);
+    this.random=random;this.nextRapid=8+Math.floor(random()*3);this.nextLong=5+Math.floor(random()*3);this.recent=[];
   }
   next(id){
-    if(id===0)return FINAL_OPENING_ID;
-    if(id>=this.nextRapid){this.nextRapid=id+8+Math.floor(this.random()*3);return 'rapid-gates-'+(this.random()<.5?2:3);}
-    if(id>=this.nextLong&&this.nextRapid-id>1){this.nextLong=id+10+Math.floor(this.random()*5);return this.random()<.5?'long-dropping-tunnel':'long-low-tunnel';}
-    return undefined;
+    let kind;
+    if(id===0)kind=FINAL_OPENING_ID;
+    else if(id>=this.nextRapid){
+      this.nextRapid=id+8+Math.floor(this.random()*3);kind='rapid-gates-'+(this.random()<.5?2:3);
+    }else if(id>=this.nextLong&&this.nextRapid-id>1){
+      this.nextLong=id+10+Math.floor(this.random()*5);kind=this.random()<.5?'long-dropping-tunnel':'long-low-tunnel';
+    }else{
+      const last=CAPTURED_FINAL_CHUNKS.find(c=>c.id===this.recent.at(-1));
+      let pool=CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(id>=5||c.family!=='rush'));
+      const varied=pool.filter(c=>c.family!==last?.family);if(varied.length)pool=varied;
+      const motifs=this.recent.map(k=>CAPTURED_FINAL_CHUNKS.find(c=>c.id===k)?.motif);
+      const different=pool.filter(c=>!c.motif||!motifs.includes(c.motif));if(different.length)pool=different;
+      kind=pool[Math.min(pool.length-1,Math.floor(this.random()*pool.length))].id;
+    }
+    this.recent.push(kind);if(this.recent.length>5)this.recent.shift();
+    return kind;
   }
 }
 // Constant velocity, with an immediate, deterministic reversal at each end.
@@ -30,8 +42,7 @@ export function pipeMotion(pipe,xOffset=0,part){
   if(motion.type==='rush'){
     // The fixed maximum-view approach is relative to the bird, not the screen
     // center. Extra travel starts offscreen, so a visible gate is already moving.
-    const duration=(motion.trigger+pipe.width+motion.passMargin)/(FINAL_PIPE_SPEED+motion.speed);
-    return {x:-clamp((time+(motion.trigger+pipe.width/2)/FINAL_PIPE_SPEED)*motion.speed,0,motion.speed*duration),y:0};
+    return {x:-Math.max(0,(time+(motion.trigger+pipe.width/2)/FINAL_PIPE_SPEED)*motion.speed),y:0};
   }
   const y=motion.amplitude*triangle(time,motion.period,motion.phase);
   const angle=(part==='top'?pipe.topRecord:pipe.bottomRecord)[2];
@@ -94,16 +105,16 @@ function postEndX(pipe,ground,part){
   let end=-Infinity;
   for(const dy of [-amplitude,amplitude]){
     const dx=motion?.alongShaft?-Math.tan(post.angle)*dy:0;
-    const polygon=clipToGround(postVertices(pipe,{...post,x:post.x+dx,y:post.y+dy},part==='top',pipeShaftLength(pipe,ground)),ground);
+    const polygon=clipToGround(postVertices(pipe,{...post,x:post.x+dx,y:post.y+dy},part==='top',pipeShaftLength(pipe,ground,part==='top')),ground);
     for(const point of polygon)end=Math.max(end,point[0]);
   }
   return end;
 }
-export function pipeShaftLength(pipe,ground){return (ground+400)/Math.SQRT1_2;}
+export function pipeShaftLength(pipe,ground,up=false){return up&&pipe.topLength?pipe.topLength:(ground+400)/Math.SQRT1_2;}
 export function pipeBounds(pipe,ground,xOffset=0){
-  const pose=pipePose(pipe,xOffset),length=pipeShaftLength(pipe,ground);let minX=Infinity,maxX=-Infinity;
+  const pose=pipePose(pipe,xOffset);let minX=Infinity,maxX=-Infinity;
   for(const [post,up] of [[pose.top,true],[pose.bottom,false]]){
-    const polygon=clipToGround(postVertices({...pipe,x:pipe.x+xOffset},post,up,length),ground);
+    const polygon=clipToGround(postVertices({...pipe,x:pipe.x+xOffset},post,up,pipeShaftLength(pipe,ground,up)),ground);
     for(const point of polygon){minX=Math.min(minX,point[0]);maxX=Math.max(maxX,point[0]);}
   }
   return {minX,maxX};
@@ -111,10 +122,11 @@ export function pipeBounds(pipe,ground,xOffset=0){
 export function pipeHorizontalExtent(pipe,ground){const b=pipeBounds(pipe,ground),center=pipe.x+pipe.width/2;return Math.max(center-b.minX,b.maxX-center);}
 export function pipeScoreX(pipe){return pipe.x+pipe.width/4+(pipe.motion?.type==='rush'?pipePose(pipe).top.x:0);}
 export function finalPipeHits(pipe,bird,ground){
-  const pose=pipePose(pipe),length=pipeShaftLength(pipe,ground);
+  const pose=pipePose(pipe);
   return [[pose.top,true],[pose.bottom,false]].some(([post,up])=>{
     const dx=bird.x-pipe.x-pipe.width/2-post.x,dy=bird.y-post.y;
     const x=dx*Math.cos(post.angle)+dy*Math.sin(post.angle),y=-dx*Math.sin(post.angle)+dy*Math.cos(post.angle);
+    const length=pipeShaftLength(pipe,ground,up);
     const nearX=clamp(x,-pipe.width/2,pipe.width/2),nearY=clamp(y,up?-length:0,up?0:length);
     return (x-nearX)**2+(y-nearY)**2<bird.radius**2;
   });
@@ -126,26 +138,28 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
   const dense=family=>['tunnel','rising','diagonal'].includes(family);
   if(dense(previous?.family))choices=choices.filter(c=>c.family!==previous.family);
   const source=kind===FINAL_OPENING_ID?FINAL_OPENING_CHUNK:kind?CAPTURED_FINAL_CHUNKS.find(c=>c.id===kind):choices[Math.min(choices.length-1,Math.floor(random()*choices.length))];
-  const amplitude=Math.max(...source.pairs.flatMap(p=>[p.motion?.amplitude||0,p.topMotion?.amplitude||0,p.bottomMotion?.amplitude||0]));
-  const nominalCenter=168+(ground-336)/2;
-  const layoutOffset=clamp(entryCenter??nominalCenter,90+amplitude,ground-90-amplitude)-nominalCenter;
+  const layout=source.layout?source.layout(random):source.pairs;
+  const amplitude=Math.max(...layout.flatMap(p=>[p.motion?.amplitude||0,p.topMotion?.amplitude||0,p.bottomMotion?.amplitude||0]));
+  const nominalCenter=(source.anchor??168)+(ground-336)/2;
+  const layoutOffset=clamp(entryCenter??nominalCenter,90+amplitude,Math.min(ground-90-amplitude,(source.maxEntry??Infinity)+(ground-336)/2))-nominalCenter;
   const verticalOffset=(ground-336)/2-64+layoutOffset;
-  const pipes=source.pairs.map(pair=>{
+  const pipes=layout.map(pair=>{
     const dx=pair.dx+(source.entryInset||0);
     const pipe={x:x+dx,chunkOffset:dx,width,gap:pair.bottom[1]-pair.top[1],level:'final',kind:source.id,chunkId:id,scored:false,
       topRecord:pair.top,bottomRecord:pair.bottom,motion:pair.motion,topMotion:pair.topMotion,bottomMotion:pair.bottomMotion,
-      safetyGroup:pair.safetyGroup||0,allowRoofOverlap:pair.allowRoofOverlap||false,lowDip:source.rare==='rapid',verticalOffset,layoutOffset,referenceBirdX};
+      safetyGroup:pair.safetyGroup||0,allowRoofOverlap:pair.allowRoofOverlap||false,topLength:pair.topLength,shaftGap:source.diagonal?2:3,lowDip:source.rare==='rapid',verticalOffset,layoutOffset,referenceBirdX};
     return Object.assign(pipe,pipePose(pipe));
   });
   // A close moving-gate continuation clears the preceding angled floors at
   // any viewport height. Only its designated upper connection may overlap.
-  for(let i=0;i<pipes.length;i++)if(source.pairs[i].afterFloor){
-    const edge=Math.max(...pipes.slice(0,i).map(p=>postEndX(p,ground,'bottom')))+3;
-    pipes[i].x=Math.max(pipes[i].x,edge);pipes[i].chunkOffset=pipes[i].x-x;
+  for(let i=0;i<pipes.length;i++)if(layout[i].afterFloor){
+    const prior=pipes.slice(0,i),floor=Math.max(...prior.map(p=>postEndX(p,ground,'bottom')))+3;
+    const roofs=prior.map(p=>postEndX(p,ground,'top')).sort((a,b)=>b-a);
+    pipes[i].x=Math.max(floor,(roofs[1]??-Infinity)+3);pipes[i].chunkOffset=pipes[i].x-x;
   }
   let endX=Math.max(...pipes.map(p=>p.x+width));
   const safety=fitPassage({pipes,x,nextX:endX+source.clearance,ground,entryCenter,
-    pose:basePose,envelope:basePose,length:pipeShaftLength});
+    pose:basePose,envelope:basePose,length:pipeShaftLength,height:source.passageHeight});
   // Preserve clean parallel edges: retract the entire roof/floor as a bank.
   for(const group of new Set(pipes.map(p=>p.safetyGroup))){
     const bank=pipes.filter(p=>p.safetyGroup===group);
@@ -161,7 +175,7 @@ export function createFinalChunk({x,ground,entryCenter,random=Math.random,previo
   const nextX=endX+source.clearance;
   const nodes=safety.nodes.slice(0,-2),exit=nodes.at(-1)[1];nodes.push([endX,exit],[nextX,exit]);
   for(const pipe of pipes)Object.assign(pipe,pipePose(pipe));
-  return {kind:source.id,family:source.family,pipes,nextX,endX,startX:x,exitCenter:exit,safePath:nodes,source:source.source};
+  return {kind:source.id,family:source.family,pipes,layout,nextX,endX,startX:x,exitCenter:exit,safePath:nodes,source:source.source};
 }
 // Analysis route follows the same shared clock as the moving bank, then blends
 // back to its nominal exit through the empty interlude. It never moves the bird.

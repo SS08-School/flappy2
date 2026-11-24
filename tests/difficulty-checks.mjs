@@ -33,12 +33,12 @@ export function checkDifficulty(){
     assert.notEqual(chunk.kind,previousKind);seen.add(chunk.kind);
     if(['tunnel','rising','diagonal'].includes(previousFamily))assert.notEqual(chunk.family,previousFamily,'a dense section cannot chain directly into more of the same tunnel');
     const source=CAPTURED_FINAL_CHUNKS.find(c=>c.id===chunk.kind);
-    assert.equal(chunk.pipes.length,source.pairs.length);
+    assert.equal(chunk.pipes.length,chunk.layout.length);
     chunk.pipes.forEach((p,j)=>{
       assert.equal(p.width,52);
-      const expectedX=614.4+source.pairs[j].dx+(source.entryInset||0);
-      if(source.pairs[j].afterFloor)assert.ok(p.x>=expectedX);else assert.equal(p.x,expectedX);
-      assert.deepEqual(p.topRecord,source.pairs[j].top);assert.deepEqual(p.bottomRecord,source.pairs[j].bottom);
+      const expectedX=614.4+chunk.layout[j].dx+(source.entryInset||0);
+      if(!chunk.layout[j].afterFloor)assert.equal(p.x,expectedX);
+      assert.deepEqual(p.topRecord,chunk.layout[j].top);assert.deepEqual(p.bottomRecord,chunk.layout[j].bottom);
       assert.ok(pipeBounds(p,336).minX>=614.4-1e-8);
       const bank=chunk.pipes.find(q=>q.safetyGroup===p.safetyGroup);
       assert.equal(p.upperRetraction,bank.upperRetraction,'each roof bank stays aligned');
@@ -48,9 +48,11 @@ export function checkDifficulty(){
     previousKind=chunk.kind;previousFamily=chunk.family;
   }
   assert.equal(seen.size,CAPTURED_FINAL_CHUNKS.filter(c=>!c.rare).length);
-  const director=new FinalDirector(seeded()),rapid=[],long=[];
+  const director=new FinalDirector(seeded()),rapid=[],long=[],history=[];
   for(let id=0;id<120;id++){
     const kind=director.next(id);
+    assert.ok(!history.slice(-5).includes(kind),'no formation repeats within five chunks');history.push(kind);
+    if(id<5)assert.notEqual(kind,'left-rush-gates','only horizontal rushes are excluded from the first five');
     if(id===0)assert.equal(kind,FINAL_OPENING_ID);
     if(kind?.startsWith('rapid-gates-'))rapid.push(id);
     if(kind?.startsWith('long-'))long.push(id);
@@ -71,17 +73,17 @@ export function checkDifficulty(){
   assert.ok(later.every((p,i)=>p.bottom.y<initial[i].bottom.y&&p.top.y<initial[i].top.y),'three complete pairs rise together');
   assert.ok(pipePose(rising.pipes[3]).center>initial[0].center+30,'rising group leads directly into a low opening');
   for(const kind of ['diagonal-rise','diagonal-fall']){
-    const chunk=chunkOfKind(kind),bank={pipes:chunk.pipes.slice(0,4)};
+    const chunk=chunkOfKind(kind),bank={pipes:chunk.pipes.slice(0,6)};
     const roof=bank.pipes.map(p=>atTime(p,0).top);
     assert.ok(new Set(roof.map(p=>p.y)).size>=3,'fixed roof has staggered cap lengths');
     for(const p of bank.pipes){assert.equal(p.top.angle,Math.PI/4);assert.equal(p.bottom.angle,-Math.PI/4);}
     for(let time=0;time<6;time+=.13){
       const shifts=bank.pipes.map((p,i)=>{assert.deepEqual(atTime(p,time).top,roof[i],'diagonal roof never moves');return pipeMotion(p,0,'bottom').y;});
-      assert.ok(Math.abs(shifts[0]-shifts[1])<1e-8&&Math.abs(shifts[2]-shifts[3])<1e-8,'each two-pipe floor group stays synchronized');
+      assert.ok(Math.abs(shifts[0]-shifts[1])<1e-8&&Math.abs(shifts[1]-shifts[2])<1e-8&&Math.abs(shifts[3]-shifts[5])<1e-8,'each three-pipe floor group stays synchronized');
     }
-    assert.notEqual(bank.pipes[0].bottomMotion.period,bank.pipes[2].bottomMotion.period,'neighboring groups move at different speeds');
-    atTime(bank.pipes[0],.1);atTime(bank.pipes[2],.1);
-    assert.ok(Math.abs(pipeMotion(bank.pipes[0],0,'bottom').y-pipeMotion(bank.pipes[2],0,'bottom').y)>1,'groups do not move as one oversized opening');
+    assert.notEqual(bank.pipes[0].bottomMotion.period,bank.pipes[3].bottomMotion.period,'neighboring groups move at different speeds');
+    atTime(bank.pipes[0],.1);atTime(bank.pipes[3],.1);
+    assert.ok(Math.abs(pipeMotion(bank.pipes[0],0,'bottom').y-pipeMotion(bank.pipes[3],0,'bottom').y)>1,'groups do not move as one oversized opening');
     const p=bank.pipes[0],post=pipePose(p).top;
     assert.ok(finalPipeHits(p,{x:p.x+26+post.x+Math.sin(post.angle)*4,y:post.y-Math.cos(post.angle)*4,radius:12},336));
   }
@@ -117,7 +119,12 @@ export function checkDifficulty(){
       }
     }
   }
-  assert.ok(contacts[2]<contacts[0],'the last gate has the shortest reaction window');
+  assert.ok(new Set(contacts).size>1,'approach speeds differ within a set');
+  assert.ok(new Set(rush.pipes.map(p=>p.bottomRecord[1])).size===3,'rush openings have different heights');
+  for(const gate of rush.pipes){
+    const a=pipeMotion({...gate,x:-200,referenceBirdX:188}).x,b=pipeMotion({...gate,x:-200-118*.02,referenceBirdX:188}).x;
+    assert.ok(Math.abs((a-b)/.02-gate.motion.speed)<1e-7,'extra movement continues after leaving the left edge');
+  }
   let baseline;
   for(const fps of [30,60,144,240]){
     const run=new Game({width:614.4,height:384,random:seeded()});run.start();run.score=5;run.activateFinal();

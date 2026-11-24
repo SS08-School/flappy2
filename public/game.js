@@ -203,8 +203,8 @@ function frame(time) {
     if (bounds.maxX < 0 || bounds.minX > width) continue;
     if (pipe.level === 'final') {
       const shape = pipePose(pipe, pose.pipeOffset);
-      const length = pipeShaftLength(pipe, ground);
       for (const [post, up] of [[shape.top, true], [shape.bottom, false]]) {
+        const length = pipeShaftLength(pipe, ground, up);
         ctx.save(); ctx.translate(pipe.x + pose.pipeOffset + pipe.width / 2 + post.x, post.y); ctx.rotate(post.angle);
         drawPipe(ctx, -pipe.width / 2, up ? -length : 0, pipe.width, length, up); ctx.restore();
       }
