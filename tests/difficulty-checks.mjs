@@ -120,10 +120,11 @@ export function checkDifficulty(){
     assert.equal(bank.pipes[4].bottomMotion.speed,50,'following pair rises together at the same speed');
     assert.ok(bank.pipes[3].bottomMotion.speed>bank.pipes[0].bottomMotion.speed,'following pair catches the trio while rising');
     const tail=bank.pipes[4],lead=bank.pipes[3];
-    const descentAt=1.06+tail.bottomMotion.returnDelay+.1;
+    const descentAt=1.06+.1;
     const tailDown=atTime(tail,descentAt+.1).bottom.y-atTime(tail,descentAt).bottom.y;
     const leadDown=atTime(lead,descentAt+.1).bottom.y-atTime(lead,descentAt).bottom.y;
     assert.ok(tailDown>leadDown+2,'trailing floor separates by descending faster');
+    for(const p of [lead,tail])assert.ok(atTime(p,1.07).bottom.y>atTime(p,1.06).bottom.y,'both pipes begin descending immediately at the shared reversal');
     for(const p of bank.pipes){
       const motion=p.bottomMotion,duration=Math.abs(motion.to-motion.from)/motion.speed;
       const a=atTime(p,motion.start).bottom.y,b=atTime(p,motion.start+duration).bottom.y;
@@ -132,8 +133,9 @@ export function checkDifficulty(){
       assert.equal(atTime(p,motion.start-.02).bottom.y,atTime(p,motion.start-.01).bottom.y,'floor bank starts stationary in its low position');
       if(motion.type==='sweep')assert.equal(atTime(p,motion.start+duration+.1).bottom.y,atTime(p,motion.start+duration+4).bottom.y,'leading trio stays extended instead of retracting');
       else{
-        const returned=motion.start+duration+(motion.returnDelay||0)+Math.abs(motion.to-motion.from)/motion.returnSpeed;
-        assert.ok(Math.abs(atTime(p,returned+.1).bottom.y-a)<1e-7,'following pair retracts to its short starting position');
+        const returned=motion.start+duration+Math.abs(motion.returnTo-motion.to)/motion.returnSpeed;
+        assert.ok(Math.abs(atTime(p,returned).bottom.y-b-(motion.returnTo-motion.to))<1e-7,'following pair completes its full return travel');
+        assert.equal(atTime(p,returned+.1).bottom.y,atTime(p,returned+2).bottom.y,'returned pipe stays still at its low endpoint');
       }
     }
     // Scroll-compensated v=(x+y)/sqrt(2), measured in the 30 FPS recording.
@@ -146,10 +148,16 @@ export function checkDifficulty(){
     assert.ok(Math.abs(pipeMotion(bank.pipes[0],0,'bottom').y-pipeMotion(bank.pipes[3],0,'bottom').y)>1,'groups do not move as one oversized opening');
     const p=bank.pipes[0],post=pipePose(p).top;
     assert.ok(finalPipeHits(p,{x:p.x+26+post.x+Math.sin(post.angle)*4,y:post.y-Math.cos(post.angle)*4,radius:12},336));
-    const leadStop=1.06+160/lead.bottomMotion.returnSpeed,tailStop=1.06+tail.bottomMotion.returnDelay+160/tail.bottomMotion.returnSpeed;
+    const leadStop=1.06+160/lead.bottomMotion.returnSpeed,tailStop=1.06+(tail.bottomMotion.returnTo-tail.bottomMotion.to)/tail.bottomMotion.returnSpeed;
     assert.ok(Math.abs(leadStop-tailStop)<1e-8,'following pair stops simultaneously');
-    const endpoints=[lead,tail].map(p=>{const b=atTime(p,leadStop+.1).bottom;return (p.x+26+b.x+b.y)*Math.SQRT1_2;});
-    assert.ok(Math.abs(endpoints[0]-endpoints[1])<1e-7,'following pair aligns exactly when stopped');
+    for(const fraction of [.01,.25,.5,.75,.99]){
+      const time=1.06+(leadStop-1.06)*fraction;
+      assert.ok(atTime(tail,time+.001).bottom.y-atTime(tail,time).bottom.y>atTime(lead,time+.001).bottom.y-atTime(lead,time).bottom.y,'right pipe moves faster throughout the shared descent without a delayed start');
+    }
+    for(const p of [lead,tail]){
+      assert.ok(atTime(p,leadStop).bottom.y>atTime(p,leadStop-.001).bottom.y,'both pipes are still descending just before their shared stop');
+      assert.equal(atTime(p,leadStop+.001).bottom.y,atTime(p,leadStop+1).bottom.y,'both pipes remain stopped after the shared endpoint');
+    }
     const slope=bank.pipes.slice(1,4).map(p=>{const top=pipePose(p).top;return top.y-(p.x+26+top.x);});
     assert.ok(Math.max(...slope)-Math.min(...slope)<1e-7,'stepped roof run remains cleanly aligned');
   }
@@ -165,6 +173,9 @@ export function checkDifficulty(){
     }
     assert.equal(bank[3].bottomMotion.speed,bank[4].bottomMotion.speed,'following two pipes rise together in every variation');
     assert.ok(bank[4].bottomMotion.returnSpeed>bank[3].bottomMotion.returnSpeed,'following pair separates during retraction in every variation');
+    const stops=bank.slice(3).map(p=>{const motion=p.bottomMotion;return motion.start+(motion.from-motion.to)/motion.speed+(motion.returnTo-motion.to)/motion.returnSpeed;});
+    assert.ok(Math.abs(stops[0]-stops[1])<1e-8,'every profile starts its return together and stops together');
+    for(const p of bank.slice(3))assert.ok(atTime(p,1.061).bottom.y>atTime(p,1.06).bottom.y,'every profile reverses both pipes without a hold');
   }
   assert.equal(profiles.size,3,'floor groups have three distinct bounded movement profiles');
   const connected=chunkOfKind('diagonal-fall');assert.ok(connected.pipes.at(-1).motion,'diagonal passage leads directly into a moving gate');
@@ -264,7 +275,7 @@ export function checkDifficulty(){
     assert.equal(tunnel.pipes.at(-2).bottomRecord[2],-Math.PI/4);
     assert.equal(tunnel.pipes.at(-1).bottomRecord[2],Math.PI/4,'both tunnel variants finish with the opposing ground-dip pipes');
     const incoming=pipePose(tunnel.pipes.at(-2)).bottom,emerging=pipePose(tunnel.pipes.at(-1)).bottom;
-    assert.ok(emerging.y-incoming.y>45,'long incoming shaft precedes the short emerging tip');
+    assert.ok(emerging.y-incoming.y>32,'incoming cap remains more than one cap-height above the short emerging tip after headroom fitting');
   }
   {
     const ordinary=chunkOfKind('stationary-diagonal-tunnel',{entryCenter:168,random:()=>.5});

@@ -20,7 +20,7 @@ function rising(id,window=false){
 }
 function bank(id,{continuation=false}={}){
   // 18–22 s: the leading trio rises and stays extended. The following two
-  // posts rise together, separate on descent, and finish aligned together.
+  // posts rise together, reverse together, and finish their returns together.
   const floorV=[223,223,223,309,309];
   const profiles=[
     {trio:22,start:-.5,pair:54,lead:82,tail:116},
@@ -35,7 +35,7 @@ function bank(id,{continuation=false}={}){
       const bx=(bu+v)*Math.SQRT1_2-3,by=(v-bu)*Math.SQRT1_2-64,dx=Math.min(tx,bx)-26;
       return {dx,top:[tx-dx-26,ty+64,Math.PI/4],noTop:i===4,roofGroup:i?1:0,minimumShaft:group?8:24,bottom:[bx-dx-26,by+64,-Math.PI/4],
         bottomMotion:group?{type:'bank',from:125,to:-35,speed:profile.pair,start:1.06-160/profile.pair,returnSpeed:i===4?profile.tail:profile.lead,
-          returnDelay:i===4?160/profile.lead-160/profile.tail:0,alongShaft:true,group}
+          returnTo:i===4?-35+160*profile.tail/profile.lead:125,alongShaft:true,group}
           :{type:'sweep',from:45,to:-20,speed:profile.trio,start:profile.start,alongShaft:true,group},
       };
     });
@@ -64,7 +64,9 @@ function diagonalTunnel(drop=false,high=false){
     pairs.push(pair(550,178,floor,{top:[0,242,-Math.PI/4],bottom:[0,floor+64,Math.PI/4],allowRoofOverlap:true,overlayAfter:true,joinFloor:true,anchorEntry:false,safetyGroup:10}));
     return pairs;
   };
-  return {id:high?'high-diagonal-tunnel':drop?'diagonal-drop-exit':'stationary-diagonal-tunnel',source:drop?[48,53]:[48,51],family:'diagonal',motif:'angled-tunnel',diagonal:true,passageHeight:high?64:72,anchor:92,minEntry:high?168:undefined,maxEntry:180,entryInset:32,clearance:3,pairs:layout(()=>.5),layout};
+  // Reserve room for the full flap arc, not just a collision circle sliding
+  // along the centerline. Keep the high variant slightly tighter.
+  return {id:high?'high-diagonal-tunnel':drop?'diagonal-drop-exit':'stationary-diagonal-tunnel',source:drop?[48,53]:[48,51],family:'diagonal',motif:'angled-tunnel',diagonal:true,passageHeight:high?96:104,anchor:92,minEntry:168,maxEntry:180,entryInset:32,clearance:3,pairs:layout(()=>.5),layout};
 }
 function rushGates(short=false){
   const layout=random=>{

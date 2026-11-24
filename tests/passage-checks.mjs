@@ -21,7 +21,7 @@ function sharedHandoff(left,right,ground){
 // Search actual flap/no-flap inputs at 50 ms decision intervals. Every arc is
 // integrated at the game's 60 Hz, with at least 200 ms between presses. The beam
 // keeps real states (no teleporting, interpolation of states or changed physics).
-export function flyPassage(scene,{minFlapInterval=.2}={}){
+export function flyPassage(scene,{minFlapInterval=.2,safetyMargin=0}={}){
   const start=scene.chunks[0].startX-140,dt=PHYSICS.step;
   const minFlapFrames=Math.ceil(minFlapInterval/dt);
   const total=Math.ceil((scene.chunks.at(-1).nextX-start)/(FINAL_PIPE_SPEED*dt));
@@ -36,6 +36,7 @@ export function flyPassage(scene,{minFlapInterval=.2}={}){
         if(range){if(up)top=Math.max(top,range[1]+12);else bottom=Math.min(bottom,range[0]-12);}
       }
     }
+    top+=safetyMargin;bottom-=safetyMargin;
     limits.push([top,bottom]);targets.push(Math.max(top,Math.min(bottom,targetAt(scene.chunks,x))));
   }
   let beam=[{y:scene.entryCenter,vy:0,age:60,flaps:0}];
@@ -162,6 +163,25 @@ export function checkPassages(){
     const scene=sequence(['stationary-tunnel',kind,'short-low-tunnel'],ground,ground/2,()=>profile);
     const result=flyPassage(scene);
     assert.ok(result.ok,'floor-group variation '+profile+', '+kind+', ground '+ground+': '+JSON.stringify(result));
+  }
+  // A point-sized route can fit while a real flap strikes the descending roof.
+  // Launch near the floor with eight pixels of extra clearance and check the
+  // complete upward arc against the actual roof ahead, including its overlay.
+  for(const kind of ['stationary-diagonal-tunnel','diagonal-drop-exit','high-diagonal-tunnel'])for(const ground of [336,575])for(const entry of [100,ground/2,ground-100])for(const profile of [.1,.5,.9]){
+    const chunk=createFinalChunk({x:300,ground,entryCenter:entry,kind,referenceBirdX:188,random:()=>profile});
+    for(let x=chunk.startX;x<chunk.endX-40;x+=4){
+      const opening=chunkOpening(chunk.pipes,x,ground);
+      if(opening.bottom-opening.top>180)continue;
+      let y=opening.bottom-20,vy=PHYSICS.flap;
+      for(let frame=1;frame<=18;frame++){
+        y+=vy*PHYSICS.step+PHYSICS.gravity*PHYSICS.step**2;vy+=PHYSICS.gravity*PHYSICS.step;
+        const roof=chunkOpening(chunk.pipes,x+frame*FINAL_PIPE_SPEED*PHYSICS.step,ground).top;
+        assert.ok(y-12-roof>=8,kind+': full flap needs roof headroom at '+x+', ground '+ground+', entry '+entry);
+      }
+    }
+    const scene=sequence(['stationary-tunnel',kind,'short-low-tunnel'],ground,entry,()=>profile);
+    const result=flyPassage(scene,{minFlapInterval:.25,safetyMargin:5});
+    assert.ok(result.ok,kind+': buffered flight through tunnel and both joins, ground '+ground+', entry '+entry+', profile '+profile+': '+JSON.stringify(result));
   }
   // Exercise every combination of horizontal velocity/height profiles, plus
   // the diagonal cap-length jitter, rather than repeatedly using one layout.

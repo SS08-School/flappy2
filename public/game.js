@@ -205,6 +205,10 @@ function frame(time) {
   nextFrameAt += (Math.floor((time - nextFrameAt + FRAME_TOLERANCE) / RENDER_INTERVAL) + 1) * RENDER_INTERVAL;
   updateControls();
   const factor = view.scale * view.dpr;
+  // Keep nearest-neighbor sampling in the same phase while a pipe moves.
+  // Rounding native pixels would stutter at high refresh rates; round only
+  // the final device-pixel translation, leaving physics and timing untouched.
+  const pipePixel = value => Math.round(value * factor) / factor;
   ctx.setTransform(factor, 0, 0, factor, 0, 0); ctx.imageSmoothingEnabled = false;
   const width = game.width, ground = game.ground, ox = (width - METRICS.width) / 2, oy = (game.height - METRICS.height) / 2;
   drawBackground(ctx, width, game.height, ground, screen === 'home' ? false : night);
@@ -213,7 +217,7 @@ function frame(time) {
   const drawFinalPost=(pipe,post,up)=>{
     if(up&&pipe.noTop)return;
     const length=pipeShaftLength(pipe,ground,up);
-    ctx.save();ctx.translate(pipe.x+pose.pipeOffset+pipe.width/2+post.x,post.y);ctx.rotate(post.angle);
+    ctx.save();ctx.translate(pipePixel(pipe.x+pose.pipeOffset+pipe.width/2+post.x),pipePixel(post.y));ctx.rotate(post.angle);
     drawPipe(ctx,-pipe.width/2,up?-length:0,pipe.width,length,up);ctx.restore();
   };
   for (const pipe of game.pipes) {
@@ -228,9 +232,10 @@ function frame(time) {
       }
       continue;
     }
-    drawPipe(ctx, pipe.x + pose.pipeOffset, 0, pipe.width, pipe.center - pipe.gap / 2, true);
+    const pipeX=pipePixel(pipe.x+pose.pipeOffset);
+    drawPipe(ctx, pipeX, 0, pipe.width, pipe.center - pipe.gap / 2, true);
     // Hide the shaft's final pixel beneath the foreground at every scale.
-    drawPipe(ctx, pipe.x + pose.pipeOffset, pipe.center + pipe.gap / 2, pipe.width, ground - pipe.center - pipe.gap / 2 + 1);
+    drawPipe(ctx, pipeX, pipe.center + pipe.gap / 2, pipe.width, ground - pipe.center - pipe.gap / 2 + 1);
   }
   for(const [pipe,post] of upperOverlays)drawFinalPost(pipe,post,true);
   if (loaded) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import { checkEngine, checkServer, checkAssets, checkPipeTiming } from './checks.mjs';
-import { checkClient, checkGroundLoop, checkPipeAnchoring, checkBirdAnimation, checkRefreshRates, checkInputLatency, checkResponsiveClient, checkPreciseInputTiming } from './client-checks.mjs';
+import { checkClient, checkGroundLoop, checkPipeAnchoring, checkBirdAnimation, checkRefreshRates, checkPipeSampling, checkInputLatency, checkResponsiveClient, checkPreciseInputTiming } from './client-checks.mjs';
 import { checkPresentation, checkBirdVariants, checkNewBestPlacement, checkDeathContinuity } from './presentation-checks.mjs';
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 import { checkScoreDigits } from './score-checks.mjs';
@@ -23,6 +23,8 @@ test('seamless ground scrolling', checkGroundLoop);
 
 test('pipe bases stay attached to the ground', checkPipeAnchoring);
 test('240 FPS cap and refresh-independent motion', checkRefreshRates);
+
+test('stable pipe pixels at fractional scales and high refresh rates', checkPipeSampling);
 test('scorecard digit identity from actual sprite pixels', checkScoreDigits);
 test('next-frame keyboard and pointer response', checkInputLatency);
 test('responsive game screens and live resizing', checkResponsiveClient);

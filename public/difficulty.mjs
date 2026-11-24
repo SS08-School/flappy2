@@ -42,7 +42,7 @@ export function triangle(time,period,phase=0){
   return 1-4*Math.abs(unit-.5);
 }
 export function motionRange(motion){
-  return ['sweep','rail','bank','plunger'].includes(motion?.type)?[Math.min(motion.from,motion.to),Math.max(motion.from,motion.to)]:[-(motion?.amplitude||0),motion?.amplitude||0];
+  return ['sweep','rail','bank','plunger'].includes(motion?.type)?[Math.min(motion.from,motion.to,motion.returnTo??motion.from),Math.max(motion.from,motion.to,motion.returnTo??motion.from)]:[-(motion?.amplitude||0),motion?.amplitude||0];
 }
 export function railPosition(time,motion){
   const distance=Math.abs(motion.to-motion.from),forward=distance/motion.speed,back=distance/(motion.returnSpeed||motion.speed),period=forward+back;
@@ -76,7 +76,7 @@ export function pipeMotion(pipe,xOffset=0,part){
   }
   const y=motion.type==='bank'?(time<=motion.start?motion.from:time<=motion.start+Math.abs(motion.to-motion.from)/motion.speed
     ?motion.from+Math.sign(motion.to-motion.from)*(time-motion.start)*motion.speed
-    :motion.to+Math.sign(motion.from-motion.to)*clamp((time-motion.start-Math.abs(motion.to-motion.from)/motion.speed-(motion.returnDelay||0))*motion.returnSpeed,0,Math.abs(motion.to-motion.from)))
+    :motion.to+Math.sign((motion.returnTo??motion.from)-motion.to)*clamp((time-motion.start-Math.abs(motion.to-motion.from)/motion.speed)*motion.returnSpeed,0,Math.abs((motion.returnTo??motion.from)-motion.to)))
     :motion.type==='plunger'?railPosition(time<=motion.slowAt?time:motion.slowAt+(time-motion.slowAt)*motion.afterSpeed/motion.speed,motion)
     :motion.type==='rail'?railPosition(time,motion):motion.type==='sweep'?(motion.preFrom!==undefined&&time<motion.start
     ?motion.from+Math.sign(motion.preFrom-motion.from)*clamp((motion.start-time)*motion.preSpeed,0,Math.abs(motion.preFrom-motion.from))

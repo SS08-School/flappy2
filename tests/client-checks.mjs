@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
-import { pipePose, pipeShaftLength, pipeBounds } from '../public/difficulty.mjs';
+import { createFinalChunk, pipePose, pipeShaftLength, pipeBounds } from '../public/difficulty.mjs';
 
-export async function createClient({ reducedMotion = true, width = 480, height = 640, random = () => 0, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
+export async function createClient({ reducedMotion = true, width = 480, height = 640, dpr = 1, random = () => 0, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
   const elements = new Map(), frames = [], stored = new Map(), images = [], events = new Map();
   let rect = { width, height }, now = 0, document;
   function makeContext() {
@@ -44,7 +44,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
   };
   const visualMath = Object.create(Math); visualMath.random = random;
   const sandbox = {
-    document, Math:visualMath, devicePixelRatio:1, Game, METRICS, PHYSICS, viewportLayout, pipePose, pipeShaftLength, pipeBounds, console, performance:{now:()=>now},
+    document, Math:visualMath, devicePixelRatio:dpr, Game, METRICS, PHYSICS, viewportLayout, pipePose, pipeShaftLength, pipeBounds, console, performance:{now:()=>now},
     GameAudio: class { constructor() { return audio; } }, DEATH_SOUND_DELAY: .2,
     matchMedia:()=>({matches:reducedMotion}), ResizeObserver:class { observe() {} },
     requestAnimationFrame:callback=>frames.push(callback),
@@ -204,6 +204,38 @@ export async function checkRefreshRates() {
   for(let i=0;i<10;i++)game.presentation();
   assert.deepEqual({ y:game.bird.y, distance:game.distance, score:game.score },before,'interpolation never changes gameplay state');
   return 'Refresh rates: 30–1000 Hz callbacks cap at 240 FPS, preserve speed/trajectory, and interpolate bird/pipes between physics steps.';
+}
+
+export async function checkPipeSampling() {
+  for(const [width,height,dpr] of [[480,640,1],[1652,1033,1],[1440,900,1.25],[390,844,3]]){
+    for(const kind of ['classic','stationary-diagonal-tunnel','diagonal-rise']){
+      const c=await createClient({width,height,dpr,random:()=>.5});c.controller.prepareRun();c.controller.flap();
+      const game=c.controller.game;game.state='ready';
+      game.pipes=kind==='classic'?[{x:220,center:168,gap:100,width:52,level:1}]
+        :createFinalChunk({x:200,ground:game.ground,kind,entryCenter:game.ground/2,referenceBirdX:game.bird.x,random:()=>.5}).pipes;
+      let first,previous;const positions=new Set();
+      for(let frame=0;frame<24;frame++){
+        for(const pipe of game.pipes){pipe.x-=118/240;if(pipe.level==='final')pipe.referenceBirdX=pipe.x-pipe.chunkOffset+26+(1.2+frame/240)*118;}
+        c.tick(1/240);
+        const commands=c.elements.get('game').context.commands;
+        const cap=commands.find(q=>q.kind==='image'&&q.args[0]===(kind==='diagonal-rise'?168:112)&&(q.args[3]===26||kind==='classic'));
+        assert.ok(cap,'test pipe is actually rendered');
+        const m=cap.matrix,[,,,,x,y]=cap.args;
+        const origin=[m[0]*x+m[2]*y+m[4],m[1]*x+m[3]*y+m[5]];
+        if(first){
+          assert.deepEqual(m.slice(0,4),first.linear,'a scrolling pipe keeps the same scale and angle');
+          for(let axis=0;axis<2;axis++){
+            const displacement=origin[axis]-first.origin[axis];
+            assert.ok(Math.abs(displacement-Math.round(displacement))<1e-7,'pipe pixels translate rigidly instead of changing nearest-neighbor sampling phase');
+          }
+          assert.ok(origin[0]<=previous[0]+1e-7,'rendered pipe never jitters backward');
+        }else first={origin,linear:m.slice(0,4)};
+        previous=origin;positions.add(origin[0].toFixed(6));
+      }
+      assert.ok(positions.size>=10,'device-pixel alignment preserves motion between high-refresh frames');
+    }
+  }
+  return 'Pipe sampling: upright, diagonal and moving posts retain a stable pixel pattern at fractional scales and device-pixel ratios.';
 }
 
 export async function checkInputLatency() {
