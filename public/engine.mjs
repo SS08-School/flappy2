@@ -38,7 +38,6 @@ export class Game {
     this.bird.x=birdX(this.width);
     const shift=this.bird.x-oldX;
     if(this.nextChunkX!==null)this.nextChunkX+=shift;
-    if(this.lastExitPort?.outgoing)this.lastExitPort.outgoing.endX+=shift;
     for(const pipe of this.pipes){
       pipe.x+=shift;
       if(pipe.level===3){pipe.referenceBirdX+=shift;Object.assign(pipe,pipePose(pipe));}

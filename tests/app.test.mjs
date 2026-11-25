@@ -5,7 +5,7 @@ import { checkPresentation, checkBirdVariants, checkNewBestPlacement, checkDeath
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 import { checkScoreDigits } from './score-checks.mjs';
 import { checkBackgroundJoins } from './background-checks.mjs';
-import { checkDifficulty, checkLevel3Client, checkFloorVisibility, checkStationaryBankAlignment } from './difficulty-checks.mjs';
+import { checkDifficulty, checkLevel3Client, checkFloorVisibility, checkStationaryBankAlignment, checkLiveChunkQueue } from './difficulty-checks.mjs';
 import { checkPassages, checkChunkContinuity, checkWindingTunnels, checkRoofApproach } from './passage-checks.mjs';
 test('original game rules and widescreen geometry', checkEngine);
 test('static game server', checkServer);
@@ -35,6 +35,7 @@ test('identical gameplay across devices and mobile rotation protections', checkD
 test('aspect-independent offscreen pipe timing', checkPipeTiming);
 test('precise input timestamps, frame stalls and refresh jitter', checkPreciseInputTiming);
 test('random level 3 difficulty chunks and collisions', checkDifficulty);
+test('live prefetch never teleports chunks or creates visible obstacles', checkLiveChunkQueue);
 test('level 3 difficulty uses only official pipe graphics', checkLevel3Client);
 
 test('lower pipe caps stay fully visible above ground', checkFloorVisibility);

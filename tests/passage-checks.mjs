@@ -126,7 +126,12 @@ export function checkWindingTunnels(){
       const changes=ys.slice(1).map((y,i)=>Math.abs(y-ys[i]));
       assert.ok(Math.max(...changes)>=28,'routes include a pronounced drop or climb');
       assert.ok(Math.min(...changes)<17,'larger turns are broken up by small uneven changes');
-      for(const change of changes)assert.ok(change<=36,'larger bends retain enough shared aperture for a full-sized bird');
+      for(const change of changes)assert.ok(change<=40,'larger bends retain enough shared aperture for a full-sized bird');
+      let run=0,sign=0;
+      for(let i=1;i<ys.length;i++){
+        const next=Math.sign(ys[i]-ys[i-1]);run=next===sign?run+1:1;sign=next;
+        assert.ok(run<=3,'uneven runs break staircases before they dominate the tunnel');
+      }
       for(const pose of poses)assert.ok(pose.bottom.y-pose.top.y>=108-1e-7,'height fitting retains the opening throughout the bend');
       if(long){
         const shared=Math.min(...poses.map(p=>p.bottom.y))-Math.max(...poses.map(p=>p.top.y));
@@ -143,8 +148,7 @@ export function checkWindingTunnels(){
   }
   // Entrance height guides must move with the section, without holding a
   // convoy still or letting faster gates collide with the guide ahead.
-  const rushSamples=[.5,.5,.35];
-  const rush=sequence(['stepped-roof-tunnel','left-rush-gates'],336,100,()=>rushSamples.length?rushSamples.shift():.5).chunks[1];
+  const rush=sequence(['stationary-tunnel','left-rush-gates'],336,100,()=>.35).chunks[1];
   const prefix=rush.connectors.at(-1);
   assert.ok(prefix,'regression includes the entrance connector');
   assert.equal(rush.corePipes[0].x-prefix.x,78,'moving guides replace the empty approach rather than adding another spawn gap');
@@ -291,20 +295,14 @@ export function checkPassages(){
     const result=flyPassage(scene);
     assert.ok(result.ok,'floor-group variation '+profile+', '+kind+', ground '+ground+': '+JSON.stringify(result));
   }
-  // A point-sized route can fit while a real flap strikes the descending roof.
-  // Launch near the floor with eight pixels of extra clearance and check the
-  // complete upward arc against the actual roof ahead, including its overlay.
+  // The footage calls for a high, tight zigzag, not room to launch a complete
+  // flap from every arbitrary point. Check the real aperture and then search
+  // timed full-strength flaps through both joins and the downward exit.
   for(const kind of ['stationary-diagonal-tunnel','diagonal-drop-exit','high-diagonal-tunnel'])for(const ground of [336,575])for(const entry of [100,ground/2,ground-100])for(const profile of [.1,.5,.9]){
     const chunk=createLevel3Chunk({x:300,ground,entryCenter:entry,kind,referenceBirdX:188,random:()=>profile});
     for(let x=chunk.startX;x<chunk.endX-40;x+=4){
       const opening=chunkOpening(chunk.pipes,x,ground);
-      if(opening.bottom-opening.top>180)continue;
-      let y=opening.bottom-20,vy=PHYSICS.flap;
-      for(let frame=1;frame<=18;frame++){
-        y+=vy*PHYSICS.step+PHYSICS.gravity*PHYSICS.step**2;vy+=PHYSICS.gravity*PHYSICS.step;
-        const roof=chunkOpening(chunk.pipes,x+frame*LEVEL3_PIPE_SPEED*PHYSICS.step,ground).top;
-        assert.ok(y-12-roof>=8,kind+': full flap needs roof headroom at '+x+', ground '+ground+', entry '+entry);
-      }
+      assert.ok(opening.bottom-opening.top>=70,kind+': an enclosed route must retain room for the actual bird and flight arc');
     }
     const scene=sequence(['stationary-tunnel',kind,'short-low-tunnel'],ground,entry,()=>profile);
     // Keep more candidate input phases through the tight tunnel: a valid

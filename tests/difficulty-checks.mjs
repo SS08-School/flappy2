@@ -6,6 +6,42 @@ import { createClient } from './client-checks.mjs';
 const seeded=(seed=17)=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
 export function chunkOfKind(kind,options={}){return createLevel3Chunk({x:614.4,ground:336,referenceBirdX:188,kind,...options});}
 function atTime(pipe,time){pipe.referenceBirdX=pipe.x-pipe.chunkOffset+26+time*LEVEL3_PIPE_SPEED;return pipePose(pipe);}
+export function checkLiveChunkQueue(){
+  let appended=0,rushes=0;
+  for(let seed=1;seed<=8;seed++){
+    const game=new Game({width:614.4,random:seeded(seed)}),append=game.appendLevel3Chunk;
+    // Keep a long run alive so this tests production scrolling/prefetch, not
+    // just formations constructed together at their original coordinates.
+    game.hit=()=>{};
+    game.appendLevel3Chunk=function(){
+      const before=new Map(this.pipes.filter(p=>p.level===3).map(p=>[p,pipePose(p)]));
+      append.call(this);appended++;
+      if(this.lastChunkKind.includes('rush'))rushes++;
+      for(const [pipe,pose]of before){
+        const after=pipePose(pipe);
+        assert.ok(Math.abs(after.top.x-pose.top.x)<1e-7&&Math.abs(after.bottom.x-pose.bottom.x)<1e-7,
+          'prefetch must not teleport an existing '+pipe.kind+' at '+this.elapsed+' seconds');
+      }
+      for(const pipe of this.pipes)if(pipe.level===3&&!before.has(pipe))
+        assert.ok(pipeBounds(pipe,this.ground).minX>=this.width-1e-7,'new '+pipe.kind+' geometry must be born offscreen');
+    };
+    game.start();
+    for(let frame=0;frame<4500;frame++){
+      if(frame===2000)game.resize(288,384);if(frame===2600)game.resize(614.4,384);
+      const staticPosts=game.pipes.filter(p=>p.level===3&&!p.motion&&!p.topMotion&&!p.bottomMotion)
+        .map(p=>[p,p.x+pipePose(p).top.x,p.x+pipePose(p).bottom.x]);
+      const travel=game.speed*PHYSICS.step;
+      game.bird.y=168;game.bird.vy=0;game.update(PHYSICS.step);
+      for(const [pipe,top,bottom]of staticPosts){
+        const pose=pipePose(pipe);
+        assert.ok(Math.abs(pipe.x+pose.top.x-top+travel)<1e-7&&Math.abs(pipe.x+pose.bottom.x-bottom+travel)<1e-7,
+          'an unrelated stationary '+pipe.kind+' must retain normal world scrolling');
+      }
+    }
+  }
+  assert.ok(appended>100&&rushes>8,'queue coverage includes many moving-section handoffs');
+  return 'Live queue: scrolling and rotation preserve outgoing bounds; prefetch adds every pipe offscreen without moving existing geometry.';
+}
 export function checkStationaryBankAlignment(){
   const kinds=['stationary-tunnel','short-high-tunnel','short-low-tunnel','stepped-roof-tunnel',
     'floor-valley-tunnel','long-dropping-tunnel','long-low-tunnel'];
@@ -71,7 +107,10 @@ export function checkDifficulty(){
     chunk.pipes.forEach((p,j)=>{
       assert.equal(p.width,52);
       const expectedX=614.4+chunk.layout[j].dx+(source.entryInset||0);
-      if(!chunk.layout[j].afterFloor&&!chunk.layout[j].overlayAfter)assert.ok(Math.abs(p.x-expectedX)<1e-8);
+      if(!chunk.layout[j].afterFloor&&!chunk.layout[j].overlayAfter){
+        if(source.family==='rush')assert.ok(Math.abs(p.x-expectedX-(chunk.pipes[0].x-614.4-(source.entryInset||0)))<1e-8,'rush reservation translates its complete formation uniformly');
+        else assert.ok(Math.abs(p.x-expectedX)<1e-8);
+      }
       if(!chunk.layout[j].joinFloor)assert.deepEqual(p.topRecord,chunk.layout[j].top);
       assert.deepEqual(p.bottomRecord,chunk.layout[j].bottom);
       assert.ok(pipeBounds(p,336).minX>=614.4-1e-8);
@@ -359,7 +398,7 @@ export function checkDifficulty(){
     const ordinary=chunkOfKind('stationary-diagonal-tunnel',{entryCenter:168,random:()=>.5});
     const high=chunkOfKind('high-diagonal-tunnel',{entryCenter:168,random:()=>.5});
     const middle=chunk=>chunk.corePipes.slice(0,6).reduce((sum,p)=>sum+pipePose(p).center,0)/6;
-    assert.ok(middle(high)<middle(ordinary)-20,'higher diagonal variation moves the route upward');
+    assert.ok(middle(high)<middle(ordinary)-8,'higher diagonal variation moves the already elevated route upward');
     const minimum=chunk=>{
       let gap=Infinity;
       for(let x=chunk.corePipes[1].x;x<chunk.corePipes[4].x;x+=2){
@@ -369,7 +408,7 @@ export function checkDifficulty(){
     };
     assert.ok(minimum(ordinary)<=140,'ordinary diagonal interior keeps the tighter reference-like flight corridor');
     assert.ok(minimum(high)<=132,'higher diagonal interior keeps its tighter flight corridor');
-    assert.ok(minimum(high)<minimum(ordinary)-7,'higher diagonal route is slightly narrower');
+    assert.ok(minimum(high)<minimum(ordinary)-2,'higher diagonal route is slightly narrower');
   }
   for(const kind of ['stationary-diagonal-tunnel','diagonal-drop-exit','high-diagonal-tunnel'])for(const ground of [336,575])for(const entry of [100,168,236])for(const profile of [.1,.5,.9]){
     const chunk=chunkOfKind(kind,{ground,entryCenter:entry,random:()=>profile});

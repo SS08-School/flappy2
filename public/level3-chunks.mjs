@@ -82,7 +82,7 @@ function diagonalTunnel(drop=false,high=false){
     const extension=i===5?92:0,rearTip=i===5?6:0,exitTrim=i===5?4:0;
     // Expose a little rear shaft beyond the foreground overlay. Shorten its
     // cap along the same axis to retain flap headroom through the exit turn.
-    return {dx,safetyGroup:i,top:[tx-dx+rearTip*2+exitTrim,ty+64-exitTrim-(high?24:0),Math.PI/4],bottom:[bx-dx-extension,by+64-extension-(high?40:0),-Math.PI/4]};
+    return {dx,safetyGroup:i,top:[tx-dx+rearTip*2+exitTrim,ty+64-exitTrim-(high?24:12),Math.PI/4],bottom:[bx-dx-extension,by+64-extension-(high?40:20),-Math.PI/4]};
   });
     const floor=drop?270:278;
     pairs.push(pair(550,178,floor,{top:[0,242,-Math.PI/4],bottom:[0,floor+64,Math.PI/4],allowRoofOverlap:true,overlayAfter:true,joinFloor:true,anchorEntry:false,safetyGroup:10,passageHeight:high?96:104}));
@@ -129,19 +129,21 @@ function windingTunnel(id,long=false,low=false){
   // The 34–43 s passage bends through short dips and staircases. Move both
   // walls together so the route changes elevation instead of only the roof.
   const profiles=long?[
-    [0,8,-4,30,64,76,46,58,28],
-    [0,-12,4,-30,-64,-76,-46,-58,-28],
-    [0,30,60,48,58,24,-8,4,-20],
-    [0,-32,-60,-46,-58,-24,8,-4,20],
+    [0,-12,8,-6,30,62,78,58,68],
+    [0,14,-8,6,-30,-62,-78,-58,-68],
+    [0,32,64,52,68,38,48,14,-18],
+    [0,-30,-64,-52,-68,-38,-48,-14,18],
   ]:[
-    [0,8,-4,30,64],[0,-12,4,-30,-64],
-    [0,32,60,46,56],[0,-32,-60,-46,-56],
+    [0,16,-12,24,8],[0,-16,12,-24,-8],
+    [0,32,18,48,26],[0,-32,-18,-48,-26],
   ];
   const layout=random=>{
     const shape=profiles[Math.min(profiles.length-1,Math.floor(random()*profiles.length))];
-    const depth=.95+random()*.1,center=168+(low?6:0),gap=124;
+    const depth=.95+random()*.1,center=168+(low?6:0);
     const pairs=shape.map((offset,i)=>{
       const y=center+offset*depth;
+      const turn=Math.max(Math.abs(offset-(shape[i-1]??offset)),Math.abs((shape[i+1]??offset)-offset))*depth;
+      const gap=turn>28?124:116;
       return pair(i*pitch,y-gap/2,y+gap/2,{minimumGap:gap});
     });
     if(long)pairs.push(pair(9*pitch+12,178,286,{
@@ -150,7 +152,7 @@ function windingTunnel(id,long=false,low=false){
     return pairs;
   };
   return {id,source:long?[34,39]:low?[39,43]:[34,37],family:'tunnel',rare:long?'long':undefined,
-    minEntry:156,maxEntry:180,preserveRoute:true,routeSlope:.68,passageHeight:76,clearance:long?12:24,pairs:layout(()=>.5),layout};
+    minEntry:156,maxEntry:180,preserveRoute:true,routeSlope:.72,passageHeight:76,clearance:long?12:24,pairs:layout(()=>.5),layout};
 }
 function descendingPursuit(){
   // 32–34 s: one complete gate plunges along a straight, readable rail.

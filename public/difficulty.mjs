@@ -61,6 +61,13 @@ function rushPosition(time,motion,width){
   const start=-(holdStart+lead)*motion.speed;
   return start+Math.min(time-holdStart,hold)*LEVEL3_PIPE_SPEED;
 }
+function rushReservation(motion,width){
+  // Fixed world-space run-in: accelerated gates may catch the preceding
+  // section only after it has left even the widest rear view. This covers
+  // the current bird position and a future centered bird without changing
+  // encounter timing between aspect ratios or moving unrelated formations.
+  return Math.ceil(motion.speed/(LEVEL3_PIPE_SPEED+motion.speed)*(motion.trigger+width/2+320));
+}
 export function pipeMotion(pipe,xOffset=0,part){
   const motion=(part&&(pipe[part+'FittedMotion']||pipe[part+'Motion']))||pipe.fittedMotion||pipe.motion;
   if(!motion)return {x:0,y:0};
@@ -97,14 +104,6 @@ export function pipePose(pipe,xOffset=0){
   const top={x:pipe.topRecord[0]+upper.x+Math.tan(pipe.topRecord[2])*retraction,y:pipe.topRecord[1]+pipe.verticalOffset+upper.y-retraction-pairedLift-(pipe.capRoofLift||0)-(pipe.motionRoofLift||0),angle:pipe.topRecord[2]};
   const lift=pipe.floorLift||0,angle=pipe.bottomRecord[2];
   const bottom={x:pipe.bottomRecord[0]+lower.x+Math.tan(angle)*(lift-(pipe.lowerRetraction||0)),y:pipe.bottomRecord[1]+pipe.verticalOffset+lower.y+(pipe.lowerRetraction||0)-lift-pairedLift+(pipe.pairedDrop||0),angle};
-  if(pipe.followingRush){
-    const next=pipe.followingRush,at=pipe.x+next.distance;
-    const time=(pipe.referenceBirdX-at-xOffset-next.width/2)/LEVEL3_PIPE_SPEED;
-    // Once this section is safely behind the bird, clear it leftward if the
-    // next accelerated section catches it. Never brake the approaching gates.
-    const shift=Math.min(0,at+rushPosition(time,next.motion,next.width)-3-pipe.x-next.endOffset);
-    top.x+=shift;bottom.x+=shift;
-  }
   return {top,bottom,center:(top.y+bottom.y)/2,angle:0};
 }
 function basePose(pipe){
@@ -277,7 +276,8 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   const count=Math.max(1,Math.ceil(Math.abs(arrival.center-incoming.center)/28)-1),span=count*pitch;
   const connectors=[];
   for(let i=0;i<count;i++){
-    const center=clamp(incoming.center+(arrival.center-incoming.center)*(i+1)/(count+1),100,ground-112);
+    const progress=(i+1)/(count+1),bend=count>3&&i>0&&i<count-1?(i%2?3:-3):0;
+    const center=clamp(incoming.center+(arrival.center-incoming.center)*progress+bend,100,ground-112);
     const native=center-(ground-336)/2,dx=i*pitch;
     const pipe={x:chunk.startX+dx,chunkOffset:dx,width,gap:124,level:3,kind:chunk.kind,chunkId:id,connector:true,scored:false,
       topRecord:[0,native-62+64,0],bottomRecord:[0,native+62+64,0],layoutOffset:0,verticalOffset:(ground-336)/2-64,
@@ -297,7 +297,7 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
     for(const pipe of chunk.corePipes)pipe.x-=entryInset;
     chunk.endX-=entryInset;chunk.nextX-=entryInset;
     const moving=[...connectors,...chunk.corePipes];
-    const reservation=Math.ceil(speed/(LEVEL3_PIPE_SPEED+speed)*(moving[0].motion.trigger+width/2));
+    const reservation=rushReservation(moving[0].motion,width);
     for(const pipe of moving)pipe.x+=reservation;
     chunk.coreStartX+=reservation;chunk.endX+=reservation;chunk.nextX+=reservation;
     for(let i=0;i<moving.length;i++)moving[i].rushAhead=moving.slice(0,i).map(p=>({distance:moving[i].x-p.x,width:p.width,
@@ -347,6 +347,10 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
       safetyGroup:pair.safetyGroup||0,minimumShaft:pair.minimumShaft,noTop:pair.noTop||false,roofGroup:pair.roofGroup,alignedRoof:source.alignedRoof||false,risingFloor:pair.risingFloor||false,minimumGap:pair.minimumGap,approachCeiling:pair.approachCeiling,lowDip:pair.lowDip||false,allowRoofOverlap:pair.allowRoofOverlap||false,arrivalClearance:source.motif==='floor-bank',shaftGap:source.diagonal?2:3,verticalOffset:verticalOffset-layoutOffset+ownLayoutOffset,layoutOffset:ownLayoutOffset,referenceBirdX};
     return Object.assign(pipe,pipePose(pipe));
   });
+  if(source.family==='rush'){
+    const extra=Math.max(0,rushReservation(pipes[0].motion,width)-(pipes[0].x-x));
+    for(const pipe of pipes){pipe.x+=extra;pipe.chunkOffset+=extra;}
+  }
   for(let i=0;i<pipes.length;i++)if(pipes[i].motion?.type==='rush'){
     pipes[i].rushAhead=pipes.slice(0,i).filter(p=>p.motion?.type==='rush').map(p=>({distance:pipes[i].x-p.x,motion:p.motion,width:p.width,center:(p.topRecord[1]+p.bottomRecord[1])/2}));
   }
@@ -394,6 +398,19 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
     pipes[5].upperRetraction=upper;
   }
   fitFloorVisibility(pipes,ground);
+  if(source.motif==='angled-tunnel'){
+    // The recorded route sits high and alternates around the unequal tips.
+    // Extend the middle floor shafts farther into the broad pockets, keeping
+    // the final floor low for the open downward turn and opposing ground tip.
+    const extension=source.id==='high-diagonal-tunnel'?[50,50,62,74,54]:[50,52,66,78,54];
+    for(const [i,pipe] of pipes.slice(0,6).entries()){
+      const post=pipePose(pipe).top;
+      const capDepth=width/2*Math.abs(Math.sin(post.angle))+PIPE_EXPOSURE.cap*Math.cos(post.angle);
+      const rise=Math.max(0,Math.min(20,post.y-PIPE_EXPOSURE.ceilingMargin-capDepth));
+      pipe.upperRetraction+=rise;
+      if(i<5)pipe.lowerRetraction-=extension[i];
+    }
+  }
   const guidedRisingExit=pipes.some(p=>p.risingFloor);
   if(guidedRisingExit)for(const pipe of pipes){
     const node=safety.nodes.find(n=>Math.abs(n[0]-pipe.x-pipe.width/2)<1e-7);
@@ -443,14 +460,9 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
   const exit=source.exitAtLastGate?pipePose({...last,referenceBirdX:last.x+last.width/2}).center:source.exitCenter===undefined?nodes.at(-1)[1]:source.exitCenter+(ground-336)/2;
   nodes.push([endX,exit],[nextX,exit]);
   for(const pipe of pipes)Object.assign(pipe,pipePose(pipe));
-  let chunk={kind:source.id,family:source.family,ground,guidedEntry:source.guidedEntry||false,guidedRisingExit,pipes,corePipes:pipes,coreStartX:x,connectors:[],layout,nextX,endX,startX:x,exitCenter:exit,safePath:nodes,source:source.source};
+  let chunk={kind:source.id,family:source.family,ground,contouredPassage:source.motif==='angled-tunnel',guidedEntry:source.guidedEntry||false,guidedRisingExit,pipes,corePipes:pipes,coreStartX:x,connectors:[],layout,nextX,endX,startX:x,exitCenter:exit,safePath:nodes,source:source.source};
   if(previousKind&&entryCenter!==undefined)chunk=connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBirdX});
-  if(source.family==='rush'&&entryPort?.outgoing){
-    const first=chunk.pipes[0],outgoing=entryPort.outgoing;
-    for(const pipe of outgoing.pipes)pipe.followingRush={distance:first.x-pipe.x,endOffset:outgoing.endX-pipe.x,width:first.width,motion:first.motion};
-  }
   chunk.exitPort=chunkOpening(chunk.pipes,chunk.nextX-12,ground,exit);
-  Object.defineProperty(chunk.exitPort,'outgoing',{value:{pipes:chunk.pipes,endX:chunk.endX}});
   chunk.exitCenter=chunk.exitPort.center;
   return chunk;
 }
@@ -458,6 +470,7 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
 // back to its nominal exit through the empty interlude. It never moves the bird.
 export function flightTarget(chunk,x,clockX=x){
   if(chunk.connectors?.length&&x<=chunk.connectionEndX)return pathHeight(chunk.safePath,x);
+  if(chunk.contouredPassage)return chunkOpening(chunk.pipes,clockX,chunk.ground,pathHeight(chunk.safePath,x)).center;
   if(chunk.corePipes.some(p=>p.arrivalClearance))return chunkOpening(chunk.pipes,clockX,chunk.ground,pathHeight(chunk.safePath,x)).center;
   if(chunk.guidedEntry||chunk.guidedRisingExit)return pathHeight(chunk.safePath,x);
   const floor=chunk.pipes.find(p=>p.bottomMotion);
