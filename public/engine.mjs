@@ -38,6 +38,7 @@ export class Game {
     this.bird.x=birdX(this.width);
     const shift=this.bird.x-oldX;
     if(this.nextChunkX!==null)this.nextChunkX+=shift;
+    if(this.lastExitPort?.outgoing)this.lastExitPort.outgoing.endX+=shift;
     for(const pipe of this.pipes){
       pipe.x+=shift;
       if(pipe.level===3){pipe.referenceBirdX+=shift;Object.assign(pipe,pipePose(pipe));}
@@ -64,13 +65,23 @@ export class Game {
     const id = this.chunkSerial++;
     this.level3Director ||= new Level3Director(this.random);
     const chunk = createLevel3Chunk({
-      x: this.nextChunkX ?? Math.max(this.pipeStartX, last ? last.x + PHYSICS.spacing : this.pipeStartX),
+      x: this.nextChunkX ?? Math.max(this.pipeStartX, last ? last.x + PHYSICS.spacing + 16 : this.pipeStartX),
       ground: this.ground, entryCenter: this.lastExitCenter ?? last?.center ?? this.ground / 2,
       entryPort: this.lastExitPort,
       previousKind: this.lastChunkKind, id, random: this.random, width: METRICS.pipeWidth,
       kind: this.level3Director.next(id),
       referenceBirdX: this.bird.x,
     });
+    if(id===0&&last?.level===1){
+      // Ceiling/ground fitting limits the rail's neutral height. Choose its
+      // arrival phase after that fitting, so the last classic gate cannot
+      // leave an almost-level, slightly misaligned opening into level 3.
+      const first=chunk.pipes[0],neutral=pipePose({...first,motion:undefined}).center;
+      const target=last.center+(last.center<neutral?48:-48),motion=first.motion;
+      const offset=Math.max(motion.from+10,Math.min(motion.to-10,target-neutral));
+      first.motion={...motion,start:-(offset-motion.from)/motion.speed};
+      Object.assign(first,pipePose(first));
+    }
     this.pipes.push(...chunk.pipes); this.lastChunkKind = chunk.kind;
     this.nextChunkX = chunk.nextX;
     this.lastExitCenter = chunk.exitCenter;

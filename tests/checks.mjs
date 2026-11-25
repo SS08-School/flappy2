@@ -109,6 +109,11 @@ export async function checkServer() {
     const html = await page.text(), body = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/)[1];
     assert.equal(body.replace(/<[^>]*>/g, '').trim(), '', 'no visible text outside official image sprites');
     for (const path of ['/game.js','/engine.mjs','/assets.mjs','/transitions.mjs','/bird-presentation.mjs','/style.css']) assert.equal((await fetch(base + path)).status, 200);
+    const manifestResponse=await fetch(base+'/manifest.webmanifest');
+    assert.equal(manifestResponse.headers.get('content-type'),'application/manifest+json');
+    const manifest=await manifestResponse.json();assert.equal(manifest.display,'fullscreen');
+    assert.equal(manifest.orientation,undefined,'home-screen play permits both orientations');
+    for(const icon of manifest.icons)assert.equal((await fetch(base+icon.src)).status,200,'official sprite app icons are served');
     const sprite = await fetch(base + '/assets/flappy/official-v1.3.png'); assert.equal(sprite.status, 200); assert.equal(sprite.headers.get('content-type'), 'image/png');
     assert.deepEqual(Buffer.from(await sprite.arrayBuffer()), await readFile(new URL('../public/assets/flappy/official-v1.3.png', import.meta.url)));
     const head = await fetch(base + '/assets/flappy/official-v1.3.png', { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal((await head.arrayBuffer()).byteLength, 0);

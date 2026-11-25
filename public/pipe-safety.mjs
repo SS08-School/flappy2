@@ -36,12 +36,12 @@ export function pathHeight(nodes,x){
   for(let i=1;i<nodes.length;i++)if(x<=nodes[i][0]){const a=nodes[i-1],b=nodes[i],t=(x-a[0])/(b[0]-a[0]);return a[1]+(b[1]-a[1])*t;}
   return nodes.at(-1)[1];
 }
-export function fitPassage({pipes,x,nextX,ground,entryCenter,pose,envelope,length,height=PASSAGE.height}){
+export function fitPassage({pipes,x,nextX,ground,entryCenter,pose,envelope,length,height=PASSAGE.height,slope=PASSAGE.slope}){
   const first=pose(pipes[0]),entry=clamp(entryCenter??first.center,PASSAGE.edgeMargin,ground-PASSAGE.edgeMargin);
   const nodes=[[x-32,entry],[x,entry]];
   for(const pipe of pipes){
     const at=pipe.x+pipe.width/2,shape=pose(pipe),target=clamp(shape.center,PASSAGE.edgeMargin,ground-PASSAGE.edgeMargin),last=nodes.at(-1);
-    const maxChange=(at-last[0])*PASSAGE.slope,y=clamp(target,last[1]-maxChange,last[1]+maxChange);
+    const maxChange=(at-last[0])*slope,y=clamp(target,last[1]-maxChange,last[1]+maxChange);
     nodes.push([at,y]);pipe.safeCenter=y;
   }
   const exit=nodes.at(-1)[1];nodes.push([nextX,exit],[nextX+32,exit]);

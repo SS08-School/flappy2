@@ -97,6 +97,14 @@ export function pipePose(pipe,xOffset=0){
   const top={x:pipe.topRecord[0]+upper.x+Math.tan(pipe.topRecord[2])*retraction,y:pipe.topRecord[1]+pipe.verticalOffset+upper.y-retraction-pairedLift-(pipe.capRoofLift||0)-(pipe.motionRoofLift||0),angle:pipe.topRecord[2]};
   const lift=pipe.floorLift||0,angle=pipe.bottomRecord[2];
   const bottom={x:pipe.bottomRecord[0]+lower.x+Math.tan(angle)*(lift-(pipe.lowerRetraction||0)),y:pipe.bottomRecord[1]+pipe.verticalOffset+lower.y+(pipe.lowerRetraction||0)-lift-pairedLift+(pipe.pairedDrop||0),angle};
+  if(pipe.followingRush){
+    const next=pipe.followingRush,at=pipe.x+next.distance;
+    const time=(pipe.referenceBirdX-at-xOffset-next.width/2)/LEVEL3_PIPE_SPEED;
+    // Once this section is safely behind the bird, clear it leftward if the
+    // next accelerated section catches it. Never brake the approaching gates.
+    const shift=Math.min(0,at+rushPosition(time,next.motion,next.width)-3-pipe.x-next.endOffset);
+    top.x+=shift;bottom.x+=shift;
+  }
   return {top,bottom,center:(top.y+bottom.y)/2,angle:0};
 }
 function basePose(pipe){
@@ -278,11 +286,22 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   }
   fitFloorVisibility(connectors,ground);
   for(const pipe of chunk.corePipes)pipe.x+=span;
-  // An accelerated first gate must also respect the stationary entrance
-  // connectors. Otherwise it can catch and overlap them after a tight bend.
-  if(chunk.family==='rush')for(const pipe of chunk.corePipes){
-    pipe.rushAhead=[...connectors.map(p=>({distance:pipe.x-p.x,width:p.width,
-      center:(p.topRecord[1]+p.bottomRecord[1])/2,motion:{type:'rush',speed:0,trigger:pipe.motion.trigger}})),...(pipe.rushAhead||[])];
+  // Height guides belong to the moving section too. A static guide used to
+  // hold the entire convoy back after it caught up, including left of the bird.
+  if(chunk.family==='rush'){
+    const speed=chunk.corePipes[0].motion.speed;
+    for(const pipe of connectors)pipe.motion={type:'rush',speed,trigger:chunk.corePipes[0].motion.trigger};
+    // The guides replace the old empty approach reservation; retaining both
+    // would leave a conspicuous wait before the first moving gate.
+    const entryInset=chunk.corePipes[0].x-chunk.startX-span;
+    for(const pipe of chunk.corePipes)pipe.x-=entryInset;
+    chunk.endX-=entryInset;chunk.nextX-=entryInset;
+    const moving=[...connectors,...chunk.corePipes];
+    const reservation=Math.ceil(speed/(LEVEL3_PIPE_SPEED+speed)*(moving[0].motion.trigger+width/2));
+    for(const pipe of moving)pipe.x+=reservation;
+    chunk.coreStartX+=reservation;chunk.endX+=reservation;chunk.nextX+=reservation;
+    for(let i=0;i<moving.length;i++)moving[i].rushAhead=moving.slice(0,i).map(p=>({distance:moving[i].x-p.x,width:p.width,
+      center:(p.topRecord[1]+p.bottomRecord[1])/2,motion:p.motion}));
   }
   chunk.coreStartX+=span;chunk.endX+=span;chunk.nextX+=span;
   chunk.pipes=[...connectors,...chunk.corePipes];
@@ -291,6 +310,11 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   chunk.connectionEndX=firstMiddle;
   chunk.safePath=[[chunk.startX-32,incoming.center],...connectors.map(p=>[p.x+width/2,pipePose(p).center]),
     [firstAt+span,arrival.center],[firstMiddle,middleOpening.center],...chunk.safePath.filter(n=>n[0]>firstMiddle-span+1e-7).map(([x,y])=>[x+span,y])];
+  if(chunk.family==='rush'){
+    chunk.safePath=[[chunk.startX-32,incoming.center],...[...connectors,...chunk.corePipes].map(p=>{
+      const at=gateArrival(p,width/2);return [at,chunkOpening(chunk.pipes,at,ground,incoming.center).center];
+    }),[chunk.endX,chunk.exitCenter],[chunk.nextX,chunk.exitCenter]];
+  }
   chunk.connectors=connectors;
   return chunk;
 }
@@ -343,7 +367,7 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
   // Fit shaped tunnels around their own entrance. Connecting gates handle
   // the incoming height later, so fitting cannot flatten the authored bends.
   const safety=source.guidedEntry?{nodes:[]}:fitPassage({pipes,x,nextX:endX+clearance,ground,entryCenter:source.preserveRoute?basePose(pipes[0]).center:entryCenter,
-    pose:basePose,envelope:basePose,length:pipeShaftLength,height:source.passageHeight});
+    pose:basePose,envelope:basePose,length:pipeShaftLength,height:source.passageHeight,slope:source.routeSlope});
   // Captured floor banks use their recorded rails. Fit the roof to the actual
   // arrival clearance below instead of widening a static midpoint corridor.
   if(source.motif==='floor-bank')for(const pipe of pipes){pipe.upperRetraction=0;pipe.lowerRetraction=0;}
@@ -353,6 +377,21 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
     const bank=pipes.filter(p=>p.safetyGroup===group);
     const upper=Math.max(...bank.map(p=>p.upperRetraction||0)),lower=Math.max(...bank.map(p=>p.lowerRetraction||0));
     for(const pipe of bank){pipe.upperRetraction=upper;pipe.lowerRetraction=lower;}
+  }
+  if(source.motif==='angled-tunnel'){
+    // Keep the measured uneven cap lengths instead of flattening both walls
+    // to the single most retracted post. Bound the resulting zigzag so real
+    // flap arcs still fit through the enclosed sections.
+    const upper=Math.max(...pipes.slice(0,6).map(p=>p.upperRetraction||0));
+    const lower=Math.max(...pipes.slice(0,6).map(p=>p.lowerRetraction||0));
+    for(const pipe of pipes.slice(0,6)){
+      pipe.upperRetraction=Math.max(pipe.upperRetraction||0,upper-8);
+      pipe.lowerRetraction=Math.max(pipe.lowerRetraction||0,lower-12);
+    }
+    // Release the last floor before the downward exit, retaining a complete
+    // flap arc beneath the final roof and its foreground overlay.
+    pipes[5].lowerRetraction=lower;
+    pipes[5].upperRetraction=upper;
   }
   fitFloorVisibility(pipes,ground);
   const guidedRisingExit=pipes.some(p=>p.risingFloor);
@@ -406,7 +445,12 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
   for(const pipe of pipes)Object.assign(pipe,pipePose(pipe));
   let chunk={kind:source.id,family:source.family,ground,guidedEntry:source.guidedEntry||false,guidedRisingExit,pipes,corePipes:pipes,coreStartX:x,connectors:[],layout,nextX,endX,startX:x,exitCenter:exit,safePath:nodes,source:source.source};
   if(previousKind&&entryCenter!==undefined)chunk=connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBirdX});
+  if(source.family==='rush'&&entryPort?.outgoing){
+    const first=chunk.pipes[0],outgoing=entryPort.outgoing;
+    for(const pipe of outgoing.pipes)pipe.followingRush={distance:first.x-pipe.x,endOffset:outgoing.endX-pipe.x,width:first.width,motion:first.motion};
+  }
   chunk.exitPort=chunkOpening(chunk.pipes,chunk.nextX-12,ground,exit);
+  Object.defineProperty(chunk.exitPort,'outgoing',{value:{pipes:chunk.pipes,endX:chunk.endX}});
   chunk.exitCenter=chunk.exitPort.center;
   return chunk;
 }

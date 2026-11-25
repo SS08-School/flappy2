@@ -123,7 +123,10 @@ export function checkWindingTunnels(){
       assert.ok(Math.abs(bank.at(-1).x-bank[0].x+52-(long?492:272))<1e-7,'main tunnel keeps its authored footprint');
       assert.ok(range>=(long?74:34),'each varied tunnel has a real dip or climb');
       assert.ok(ys.some((y,i)=>i&&y>ys[i-1])&&ys.some((y,i)=>i&&y<ys[i-1]),'each route changes direction, rather than drifting in a straight line');
-      for(let i=1;i<ys.length;i++)assert.ok(Math.abs(ys[i]-ys[i-1])<=26,'stair steps stay within a readable flight transition');
+      const changes=ys.slice(1).map((y,i)=>Math.abs(y-ys[i]));
+      assert.ok(Math.max(...changes)>=28,'routes include a pronounced drop or climb');
+      assert.ok(Math.min(...changes)<17,'larger turns are broken up by small uneven changes');
+      for(const change of changes)assert.ok(change<=36,'larger bends retain enough shared aperture for a full-sized bird');
       for(const pose of poses)assert.ok(pose.bottom.y-pose.top.y>=108-1e-7,'height fitting retains the opening throughout the bend');
       if(long){
         const shared=Math.min(...poses.map(p=>p.bottom.y))-Math.max(...poses.map(p=>p.top.y));
@@ -138,15 +141,22 @@ export function checkWindingTunnels(){
     assert.ok(profiles.size>=8,'shape and depth choices produce varied tunnel routes');
     assert.equal(directions.size,2,'both dip-first and climb-first routes are available');
   }
-  // Accelerated gates cannot catch their stationary height-change connectors.
+  // Entrance height guides must move with the section, without holding a
+  // convoy still or letting faster gates collide with the guide ahead.
   const rushSamples=[.5,.5,.35];
   const rush=sequence(['stepped-roof-tunnel','left-rush-gates'],336,100,()=>rushSamples.length?rushSamples.shift():.5).chunks[1];
   const prefix=rush.connectors.at(-1);
   assert.ok(prefix,'regression includes the entrance connector');
+  assert.equal(rush.corePipes[0].x-prefix.x,78,'moving guides replace the empty approach rather than adding another spawn gap');
   for(let x=rush.startX-500;x<rush.nextX+600;x+=4){
     for(const pipe of rush.corePipes){
       const pose=pipePose({...pipe,referenceBirdX:x});
-      assert.ok(pipe.x+pose.top.x-prefix.x-prefix.width>=24-1e-7,'rushing gates stay physically clear of their connecting pipes');
+      const front=pipePose({...prefix,referenceBirdX:x});
+      assert.ok(pipe.x+pose.top.x-prefix.x-front.top.x-prefix.width>=24-1e-7,'rushing gates stay physically clear of their moving guides');
+      if(!pipe.motion.hold && pipe.x+pose.top.x-x<=426.48){
+        const dt=.01,next=pipePose({...pipe,x:pipe.x-118*dt,referenceBirdX:x});
+        assert.ok(pipe.x-118*dt+next.top.x<pipe.x+pose.top.x-118*dt,'ordinary gates keep their extra left motion before and after passing the bird');
+      }
     }
   }
   return 'Winding tunnels: four up/down profiles with randomized depths retain their lengths, aligned walls and buffered flight paths; accelerated entrances remain separated.';

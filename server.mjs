@@ -13,8 +13,10 @@ export async function createApp() {
   files['/difficulty.mjs'] = 'difficulty.mjs';
   files['/level3-chunks.mjs'] = 'level3-chunks.mjs';
   files['/pipe-safety.mjs'] = 'pipe-safety.mjs';
+  files['/manifest.webmanifest'] = 'manifest.webmanifest';
+  for (const size of [180,192,512]) files[`/assets/app/icon-${size}.png`] = `assets/app/icon-${size}.png`;
   for (const file of Object.values(SOUND_FILES)) files[`/assets/audio/${file}`] = `assets/audio/${file}`;
-  const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg' };
+  const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.png': 'image/png', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.webmanifest': 'application/manifest+json' };
   const server = http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'same-origin');

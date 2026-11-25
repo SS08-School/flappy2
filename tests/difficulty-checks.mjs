@@ -43,13 +43,21 @@ export function checkDifficulty(){
       assert.ok(game.score<5);lastClassic=game.pipes.filter(p=>p.level===1).at(-1);firstLevel3=game.pipes.find(p=>p.level===3);
       assert.equal(firstLevel3.kind,LEVEL3_OPENING_ID);assert.ok(firstLevel3.motion);
       assert.equal(game.classicSpawned,5);
-      assert.ok(Math.abs(firstLevel3.x-lastClassic.x-156)<1e-8,'no added gap at the level switch');
+      assert.ok(Math.abs(firstLevel3.x-lastClassic.x-172)<1e-8,'short deliberate release at the level switch');
+      const opening=pipePose({...firstLevel3,referenceBirdX:firstLevel3.x+26});
+      assert.ok(Math.abs(opening.center-lastClassic.center)>=30,'the first moving opening differs visibly from the last classic pair');
       for(const p of game.pipes.filter(p=>p.level===3))assert.ok(pipeBounds(p,game.ground).minX>=game.width-1e-8,'queue entire sections offscreen');
     }
-    if(firstLevel3)assert.ok(Math.abs(firstLevel3.x-lastClassic.x-156)<1e-7);
+    if(firstLevel3)assert.ok(Math.abs(firstLevel3.x-lastClassic.x-172)<1e-7);
   }
   assert.equal(game.score,5);assert.equal(game.difficulty,3);assert.equal(game.speed,118);
   assert.equal(events.filter(e=>e.type==='difficulty').length,1);
+  for(const value of [0,.1,.25,.5,.75,.9,1])for(const width of [240,288,614.4]){
+    const run=new Game({width,random:()=>value});run.spawnPipe(run.pipeStartX);run.appendLevel3Chunk();
+    const classic=run.pipes[0],moving=run.pipes[1],arrival=pipePose({...moving,referenceBirdX:moving.x+26});
+    assert.ok(Math.abs(arrival.center-classic.center)>=30,'level transition stays deliberate across random heights and aspect ratios');
+    assert.ok(Math.abs(moving.x-classic.x-172)<1e-7,'transition release is fixed in world coordinates');
+  }
   const before=game.pipes.map(p=>[p.x,pipePose(p)]);game.hit();game.update(.1);
   assert.deepEqual(game.pipes.map(p=>[p.x,pipePose(p)]),before,'all motion freezes on hit');
   game.start();assert.equal(game.difficulty,1);assert.equal(game.level3Queued,false);

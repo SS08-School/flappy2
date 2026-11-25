@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
 import { createLevel3Chunk, pipePose, pipeShaftLength, pipeBounds, level3PipeHits } from '../public/difficulty.mjs';
 
-export async function createClient({ reducedMotion = true, width = 480, height = 640, dpr = 1, random = () => 0, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
+export async function createClient({ reducedMotion = true, width = 480, height = 640, dpr = 1, random = () => 0, coarsePointer = false, fullscreenRequest, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
   const elements = new Map(), frames = [], stored = new Map(), images = [], events = new Map(), windowEvents=new Map();
   let rect = { width, height }, now = 0, document;
   function makeContext() {
@@ -38,6 +38,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
     elements.set(id || `anonymous-${elements.size}`,element);
   }
   document = {
+    documentElement:{requestFullscreen:fullscreenRequest},
     activeElement:elements.get('game'), getElementById:id=>elements.get(id)||null,
     addEventListener(type,fn) { events.set(type,fn); },
     querySelectorAll:()=>[...elements.values()].filter(e=>e.dataset.sprite),
@@ -46,7 +47,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
   const sandbox = {
     document, window:{addEventListener(type,fn){windowEvents.set(type,fn);}}, Math:visualMath, devicePixelRatio:dpr, Game, METRICS, PHYSICS, viewportLayout, pipePose, pipeShaftLength, pipeBounds, console, performance:{now:()=>now},
     GameAudio: class { constructor() { return audio; } }, DEATH_SOUND_DELAY: .2,
-    matchMedia:()=>({matches:reducedMotion}), ResizeObserver:class { observe() {} },
+    matchMedia:query=>({matches:query.includes('coarse')?coarsePointer:reducedMotion}), ResizeObserver:class { observe() {} },
     requestAnimationFrame:callback=>frames.push(callback),
     localStorage:{getItem:key=>stored.get(key)||null,setItem:(key,value)=>stored.set(key,value)},
     Image:class { set src(value) { images.push(value); queueMicrotask(()=>this.onload()); } },
@@ -432,5 +433,21 @@ export async function checkPreciseInputTiming() {
     const bird=context.commands.find(q=>q.kind==='image'&&q.args[1]===982&&q.args[2]===34);
     assert.ok(bird.matrix[5]/Math.hypot(bird.matrix[0],bird.matrix[1])<y,'first available frame shows the flap even if its queued RAF timestamp predates the press');
   }
-  return 'Precise input: between-frame and stalled-frame presses retain full strength, timestamped flight matches across FPS, and tab/jitter handling avoids added delay.';
+  for(const input of ['pointer','keyboard']){
+    const c=await createClient();c.controller.prepareRun();c.controller.flap();c.tick(.02);
+    c.focus(false);c.tick(2);c.elapse(.001);
+    if(input==='pointer')c.events.get('pointerdown')({button:0,target,preventDefault(){}});else press(c);
+    assert.equal(c.controller.game.bird.vy,PHYSICS.flap,'a real press restores focus even when the browser delivers focus afterward');
+    c.tick(1/240);assert.equal(c.controller.game.state,'playing');
+  }
+  const fading=await createClient({reducedMotion:false});fading.tick(.4);fading.controller.prepareRun();
+  fading.tick(.22);press(fading);fading.tick(.7);
+  assert.equal(fading.controller.game.state,'playing','a press during the ready fade is retained until the screen is ready');
+  let requests=0;
+  const mobile=await createClient({coarsePointer:true,fullscreenRequest:()=>{requests++;return Promise.resolve();}});
+  mobile.controller.prepareRun();assert.equal(requests,1,'mobile play requests fullscreen within the activating gesture');
+  const desktop=await createClient({fullscreenRequest:()=>{throw new Error('desktop must stay in its window');}});desktop.controller.prepareRun();
+  const rejected=await createClient({coarsePointer:true,fullscreenRequest:()=>Promise.reject(new Error('unsupported'))});
+  rejected.controller.prepareRun();rejected.controller.flap();await Promise.resolve();assert.equal(rejected.controller.game.state,'playing','fullscreen denial cannot prevent play');
+  return 'Precise input: timestamps, focus-event races, queued ready taps and mobile fullscreen success/failure pass without adding flap delay.';
 }

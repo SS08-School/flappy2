@@ -21,6 +21,7 @@ let nextFrameAt = previous + RENDER_INTERVAL;
 let best = 0, previousBest = 0, finalScore = 0, newBest = false;
 let scene = { phase: reducedMotion ? 'idle' : 'in', elapsed: 0 }, sceneBlack = reducedMotion ? 0 : 1;
 let readyAge = 0, readyExitAge = null, flapElapsed = Infinity;
+let pendingReadyFlap = false;
 let birdTilt = 0, lastWing = 0, impact = null;
 const audio = new GameAudio();
 let glimmer = new MedalGlimmer();
@@ -106,6 +107,8 @@ function showReady() {
   updateControls(); canvas.focus({ preventScroll: true });
 }
 function prepareRun() {
+  recoverInputFocus();
+  enterMobileFullscreen();
   advance(performance.now());
   if (!loaded || scene.phase !== 'idle' || !['home', 'over'].includes(screen)) return;
   if (screen === 'over' && !resultState().finished) return;
@@ -114,7 +117,8 @@ function prepareRun() {
   scene = { phase: 'out', elapsed: 0 }; updateControls();
 }
 function flap(inputTime) {
-  if(suspended())return;
+  if(document.hidden)return;
+  recoverInputFocus();
   if (!loaded) { audio.unlock(); initializeAssets(); return; }
   const now=performance.now();
   // A busy frame can deliver an event after its physical press. Apply the
@@ -122,23 +126,43 @@ function flap(inputTime) {
   // Old/foreign-clock timestamps must never rewind committed simulation.
   const at=Number.isFinite(inputTime)&&inputTime>=0&&inputTime<=now?Math.max(previous,inputTime):now;
   advance(at);
-  if (scene.phase !== 'idle') return;
+  if (scene.phase !== 'idle') {
+    // Retain a tap during the ready-screen fade instead of silently losing it.
+    if (screen === 'ready' || scene.phase === 'out') pendingReadyFlap = true;
+    return;
+  }
+  applyFlap();
+  audio.unlock();
+}
+function applyFlap() {
   if (screen === 'ready') {
     const bob = reducedMotion ? 0 : idleBob(clock);
     game.start(); game.bird.y += bob;
     screen = 'playing'; flapElapsed = 0; readyExitAge = 0; updateControls();
   } else if (game.state === 'playing') { game.flap(); if(game.state === 'playing') flapElapsed = 0; }
-  audio.unlock();
+}
+function recoverInputFocus() {
+  // A click that restores browser focus can arrive before the focus event.
+  if (!document.hidden && !pageFocused) {
+    pageFocused = true; previous = performance.now(); nextFrameAt = previous;
+  }
+}
+function enterMobileFullscreen() {
+  if (!matchMedia('(any-pointer: coarse)').matches || document.fullscreenElement || document.webkitFullscreenElement) return;
+  const root = document.documentElement, request = root?.requestFullscreen || root?.webkitRequestFullscreen;
+  if (request) {
+    try { Promise.resolve(request.call(root, { navigationUI: 'hide' })).catch(() => {}); } catch {}
+  }
 }
 $('play-button').addEventListener('click', prepareRun);
 document.addEventListener('pointerdown', event => {
   if (event.button !== 0 || (event.target.closest('button')&&screen!=='ready'&&game.state!=='playing')) return;
-  event.preventDefault(); flap(event.timeStamp);
+  event.preventDefault(); enterMobileFullscreen(); flap(event.timeStamp);
 }, { capture: true, passive: false });
 document.addEventListener('keydown', event => {
   if(event.code==='Tab'){event.preventDefault();return;}
   // Escape deliberately has no game action.
-  if (['Space', 'ArrowUp', 'KeyW', 'Enter'].includes(event.code) && (!event.target.closest('button')||screen==='ready'||game.state==='playing')) {
+  if ((['Space', 'ArrowUp', 'KeyW', 'Enter'].includes(event.code) || [' ', 'ArrowUp', 'w', 'W', 'Enter'].includes(event.key)) && (!event.target.closest('button')||screen==='ready'||game.state==='playing')) {
     event.preventDefault(); if (!event.repeat) flap(event.timeStamp);
   }
 }, { capture: true });
@@ -153,8 +177,10 @@ window.addEventListener('blur', () => {
   pageFocused=false;previous=performance.now();nextFrameAt=previous;
 });
 window.addEventListener('focus', () => {
-  pageFocused=true;previous=performance.now();nextFrameAt=previous;
+  if(!pageFocused){pageFocused=true;previous=performance.now();nextFrameAt=previous;}
 });
+document.addEventListener('fullscreenchange', resize);
+window.addEventListener('orientationchange', resize);
 
 function advanceScene(dt) {
   while (scene.phase !== 'idle' && dt > 0) {
@@ -212,6 +238,9 @@ function advance(time) {
     }
   }
   if (!impact) landDistance += game.speed * dt;
+  if (pendingReadyFlap && scene.phase === 'idle' && screen === 'ready') {
+    pendingReadyFlap = false; applyFlap();
+  }
 }
 function frame() {
   // A queued RAF timestamp can precede a just-handled input or focus event.
