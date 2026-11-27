@@ -22,8 +22,8 @@ function sharedHandoff(left,right,ground){
 // Tight-route checks consider every physics frame instead. Every arc is
 // integrated at the game's 60 Hz, with at least 200 ms between presses. The beam
 // keeps real states (no teleporting, interpolation of states or changed physics).
-export function flyPassage(scene,{minFlapInterval=.2,safetyMargin=0,beamWidth=64,decisionFrames=3}={}){
-  const start=scene.chunks[0].startX-140,dt=PHYSICS.step;
+export function flyPassage(scene,{minFlapInterval=.2,safetyMargin=0,beamWidth=64,decisionFrames=3,startX,initialY=scene.entryCenter,initialVelocity=0}={}){
+  const start=startX??scene.chunks[0].startX-140,dt=PHYSICS.step;
   const minFlapFrames=Math.ceil(minFlapInterval/dt);
   const total=Math.ceil((scene.chunks.at(-1).nextX-start)/(LEVEL3_PIPE_SPEED*dt));
   const limits=[],targets=[];
@@ -40,7 +40,7 @@ export function flyPassage(scene,{minFlapInterval=.2,safetyMargin=0,beamWidth=64
     top+=safetyMargin;bottom-=safetyMargin;
     limits.push([top,bottom]);targets.push(Math.max(top,Math.min(bottom,targetAt(scene.chunks,x))));
   }
-  let beam=[{y:scene.entryCenter,vy:0,age:60,flaps:0}];
+  let beam=[{y:initialY,vy:initialVelocity,age:60,flaps:0}];
   for(let frame=0;frame<total;frame+=decisionFrames){
     const candidates=new Map(),target=targets[frame+decisionFrames],targetV=(target-targets[frame])/(dt*decisionFrames);
     for(const state of beam)for(const flap of [false,true]){
@@ -99,6 +99,31 @@ export function checkOverlayTips(){
   assert.ok(tested>=100,'tip visibility includes both long routes and every diagonal variant');
   return 'Overlay tips: full rear caps stay visible across every overlay, layout variation, entry height and supported world height.';
 }
+export function checkTurnWindows(){
+  let routes=0;
+  for(const kind of ['long-dropping-tunnel','long-low-tunnel'])for(const ground of [336,575])for(const profile of [.1,.5,.9]){
+    const chunk=createLevel3Chunk({x:300,ground,entryCenter:ground/2,kind,random:()=>profile});
+    const previous=chunk.corePipes[3],pose=pipePose(previous),startX=previous.x+previous.width+13;
+    const opening=chunkOpening(chunk.pipes,startX,ground);
+    const top=Math.max(pose.top.y,opening.top)+28,bottom=Math.min(pose.bottom.y,opening.bottom)-28;
+    for(const fraction of [.1,.5,.9])for(const initialVelocity of [-60,80]){
+      const initialY=top+(bottom-top)*fraction;
+      const result=flyPassage({chunks:[chunk],pipes:chunk.pipes,ground,entryCenter:initialY},
+        {startX,initialY,initialVelocity,minFlapInterval:.25,safetyMargin:5,beamWidth:256,decisionFrames:1});
+      assert.ok(result.ok,kind+': turn is reachable from varied legal heights/velocities using vertical control only: '+JSON.stringify(result));routes++;
+    }
+  }
+  let joins=0;
+  for(const kind of LEVEL3_CHUNK_KINDS)for(const entryCenter of [100,236])for(const profile of [.1,.5,.9]){
+    const chunk=createLevel3Chunk({x:300,ground:336,entryCenter,previousKind:'stationary-tunnel',kind,random:()=>profile});
+    const roof=chunk.connectors.map(p=>pipePose(p).top.y);
+    for(let i=2;i<roof.length;i++)assert.ok((roof[i]-roof[i-1])*(roof[i-1]-roof[i-2])<=1e-7,
+      'height connectors must not restore the staircase roof removed from the templates');
+    if(roof.length>=3)joins++;
+  }
+  assert.ok(joins>5);
+  return 'Turning windows: '+routes+' buffered flights from different heights and velocities pass with vertical control only; transition roofs remain uneven.';
+}
 export function checkChunkContinuity(){
   const fixtures=[['rising-trio','long-low-tunnel'],['short-low-tunnel','long-dropping-tunnel'],
     ['tunnel-plunger','stationary-tunnel'],['long-low-tunnel','rising-trio'],['stationary-tunnel','rising-trio']];
@@ -140,16 +165,27 @@ export function checkWindingTunnels(){
       const ys=poses.map(p=>p.center),range=Math.max(...ys)-Math.min(...ys);
       assert.equal(chunk.corePipes.length,long?10:4,'ordinary winding passages are four pairs; only rare variants are long');
       assert.ok(Math.abs(bank.at(-1).x-bank[0].x+52-(long?492:217))<1e-7,'ordinary tunnel footprint is shortened');
-      assert.ok(range>=(long?90:20),'long routes have a pronounced dip/climb; short ones retain small steps');
+      if(long)assert.ok(range>=90,'long routes retain a pronounced dip or climb');
+      else{
+        const floors=poses.map(p=>p.bottom.y),roofs=poses.map(p=>p.top.y);
+        assert.ok(Math.max(...floors)-Math.min(...floors)>=24,'short floors retain uneven heights');
+        assert.ok(Math.max(...roofs)-Math.min(...roofs)>=12,'short roofs have their own uneven heights');
+        assert.ok(new Set(poses.map(p=>(p.bottom.y-p.top.y).toFixed(4))).size>=3,
+          'the roof does not track the floor as a fixed-width staircase');
+      }
       assert.ok(ys.some((y,i)=>i&&y>ys[i-1])&&ys.some((y,i)=>i&&y<ys[i-1]),'each route changes direction, rather than drifting in a straight line');
       const changes=ys.slice(1).map((y,i)=>Math.abs(y-ys[i]));
-      assert.ok(Math.max(...changes)>=(long?44:14),'large chutes are reserved for the rare long variant');
-      assert.ok(Math.min(...changes)<17,'larger turns are broken up by small uneven changes');
-      for(const change of changes)assert.ok(change<=(long?60:40),'a staggered ceiling leaves room to enter the big floor ledge');
+      if(long){
+        assert.ok(Math.max(...changes)>=44,'large chutes are reserved for the rare long variant');
+        assert.ok(Math.min(...changes)<17,'larger turns are broken up by small uneven changes');
+      }
+      for(const change of changes)assert.ok(change<=(long?70:40),'a staggered ceiling leaves room to enter the big floor ledge');
       let run=0,sign=0;
       for(let i=1;i<ys.length;i++){
         const next=Math.sign(poses[i].bottom.y-poses[i-1].bottom.y);run=next===sign?run+1:1;sign=next;
         assert.ok(run<=3,'uneven runs break staircases before they dominate the tunnel');
+        if(i>1)assert.notEqual(Math.sign(poses[i].top.y-poses[i-1].top.y),
+          Math.sign(poses[i-1].top.y-poses[i-2].top.y),'linear tunnel roofs never form a staircase');
       }
       for(const pose of poses)assert.ok(pose.bottom.y-pose.top.y>=108-1e-7,'height fitting retains the opening throughout the bend');
       if(long){
@@ -205,8 +241,12 @@ export function checkRoofApproach(){
     assert.equal(roof.connectors.length,0,'the low corridor joins the moving roof directly');
     assert.ok(Math.abs(poses.at(-1).center-poses[0].center-70)<1e-7,'approach guides the bird seventy pixels downward');
     for(let i=0;i<bank.length;i++){
-      assert.ok(Math.abs(poses[i].bottom.y-poses[i].top.y-112)<1e-7,'approach stays narrow and enclosed');
-      if(i){assert.ok(poses[i].center>poses[i-1].center,'corridor descends continuously');assert.equal(bank[i].x-bank[i-1].x,55);}
+      assert.ok(poses[i].bottom.y-poses[i].top.y>=108-1e-7&&poses[i].bottom.y-poses[i].top.y<=156,'approach stays enclosed while leaving flap room around its larger uneven turns');
+      if(i)assert.equal(bank[i].x-bank[i-1].x,55);
+      if(i>1)for(const part of ['top','bottom']){
+        assert.ok((poses[i][part].y-poses[i-1][part].y)*(poses[i-1][part].y-poses[i-2][part].y)<0,'roof approach is uneven instead of a staircase');
+        assert.ok(Math.abs(poses[i][part].y-poses[i-1][part].y)>=12,'uneven tips have visible height differences, not tiny deviations from stairs');
+      }
     }
     // Compare the roof with the standalone formation at matching clocks:
     // the new setup cannot alter its geometry, fitting or movement profiles.

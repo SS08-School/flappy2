@@ -4,6 +4,17 @@ import { LEVEL3_TEST_SCORE,LEVEL3_PIPE_SPEED,LEVEL3_OPENING_ID,LEVEL3_CHUNK_KIND
 import { LEVEL3_CHUNKS } from '../public/level3-chunks.mjs';
 import { createClient } from './client-checks.mjs';
 const seeded=(seed=17)=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
+export function checkMovingSpeedVariety(){
+  for(let seed=1;seed<=16;seed++)for(const kind of LEVEL3_CHUNK_KINDS){
+    const chunk=chunkOfKind(kind,{entryCenter:seed%2?100:236,previousKind:'stationary-tunnel',random:seeded(seed)});
+    for(let i=1;i<chunk.pipes.length;i++){
+      const before=chunk.pipes[i-1],after=chunk.pipes[i];
+      const a=before.bottomMotion||before.motion,b=after.bottomMotion||after.motion;
+      if(a&&b)assert.ok(Math.abs(a.speed-b.speed)>1e-6,'adjacent moving pipes need distinct speeds: '+kind);
+    }
+  }
+  return 'Moving-pipe variety: adjacent rails, floor groups, rushes and moving guides all use distinct speeds.';
+}
 export function chunkOfKind(kind,options={}){return createLevel3Chunk({x:614.4,ground:336,referenceBirdX:188,kind,...options});}
 function atTime(pipe,time){pipe.referenceBirdX=pipe.x-pipe.chunkOffset+26+time*LEVEL3_PIPE_SPEED;return pipePose(pipe);}
 export function checkLiveChunkQueue(){
@@ -15,7 +26,7 @@ export function checkLiveChunkQueue(){
     game.hit=()=>{};
     game.appendLevel3Chunk=function(){
       const before=new Map(this.pipes.filter(p=>p.level===3).map(p=>[p,pipePose(p)]));
-      append.call(this);appended++;
+      const result=append.call(this);appended++;
       if(this.lastChunkKind.includes('rush'))rushes++;
       for(const [pipe,pose]of before){
         const after=pipePose(pipe);
@@ -24,6 +35,7 @@ export function checkLiveChunkQueue(){
       }
       for(const pipe of this.pipes)if(pipe.level===3&&!before.has(pipe))
         assert.ok(pipeBounds(pipe,this.ground).minX>=this.width-1e-7,'new '+pipe.kind+' geometry must be born offscreen');
+      return result;
     };
     game.start();
     for(let frame=0;frame<4500;frame++){
@@ -49,6 +61,11 @@ export function checkStationaryBankAlignment(){
     const chunk=chunkOfKind(kind,{ground,entryCenter:entry});
     const bank=chunk.corePipes.filter(p=>!p.motion&&!p.topMotion&&!p.bottomMotion&&p.topRecord[2]===0&&p.bottomRecord[2]===0);
     const first=bank[0],base=pipePose(first);
+    if(kind.startsWith('short-')){
+      const poses=bank.map(p=>pipePose(p));
+      for(const part of ['top','bottom'])assert.ok((poses[1][part].y-poses[0][part].y)*(poses[2][part].y-poses[1][part].y)<0,
+        'short formations are uneven instead of three ascending or descending steps');
+    }
     for(const pipe of bank){
       const pose=pipePose(pipe);
       assert.ok(Math.abs(pose.top.y-base.top.y-(pipe.topRecord[1]-first.topRecord[1]))<1e-7,
@@ -181,6 +198,8 @@ export function checkDifficulty(){
   for(const entryCenter of [100,168,236]){
     const opening=chunkOfKind(LEVEL3_OPENING_ID,{entryCenter});
     assert.equal(opening.pipes.length,3);assert.ok(opening.pipes.every(p=>!p.motion&&p.topRecord[2]===0),'stage 3 begins with a short upright tunnel');
+    assert.equal(new Set(opening.pipes.map(p=>pipePose(p).top.y)).size,1,'the opening roof is flat');
+    assert.equal(new Set(opening.pipes.map(p=>pipePose(p).bottom.y)).size,1,'the opening floor is flat');
   }
   const rising=chunkOfKind('rising-trio');assert.equal(rising.pipes.length,6);
   const initial=rising.pipes.slice(0,3).map(p=>atTime(p,0)),later=rising.pipes.slice(0,3).map(p=>atTime(p,1));
@@ -196,9 +215,10 @@ export function checkDifficulty(){
     for(const p of bank.pipes){assert.equal(p.top.angle,Math.PI/4);assert.equal(p.bottom.angle,-Math.PI/4);}
     for(let time=0;time<6;time+=.13){
       const shifts=bank.pipes.map((p,i)=>{assert.deepEqual(atTime(p,time).top,roof[i],'diagonal roof never moves');return pipeMotion(p,0,'bottom').y;});
-      assert.ok(Math.abs(shifts[0]-shifts[1])<1e-8&&Math.abs(shifts[1]-shifts[2])<1e-8,'leading three-pipe floor group stays synchronized');
+      assert.ok(Math.max(...shifts.slice(0,3))-Math.min(...shifts.slice(0,3))<10,'leading floor group stays coherent with individually varied speeds');
     }
     assert.ok(bank.pipes[0].bottomMotion.speed>10&&bank.pipes[0].bottomMotion.speed<13,'trio ascent spans the widescreen approach at a steady speed');
+    assert.equal(new Set(bank.pipes.slice(0,3).map(p=>p.bottomMotion.speed)).size,3,'neighboring floors have distinct speeds');
     assert.equal(bank.pipes[3].bottomMotion.speed,50);
     assert.ok(bank.pipes[4].bottomMotion.speed>50,'right pipe covers its longer ascent faster');
     assert.ok(bank.pipes[3].bottomMotion.speed>bank.pipes[0].bottomMotion.speed,'following pair catches the trio while rising');
@@ -262,7 +282,7 @@ export function checkDifficulty(){
     for(let t=-3;t<6;t+=.07){
       bank.forEach((p,i)=>assert.deepEqual(atTime(p,t).top,tops[i],'roof stays fixed in every floor-group variation'));
       const shifts=bank.map(p=>pipeMotion(p,0,'bottom').y);
-      assert.ok(Math.abs(shifts[0]-shifts[1])<1e-8&&Math.abs(shifts[1]-shifts[2])<1e-8,'variation retains the three-pipe group');
+      assert.ok(Math.max(...shifts.slice(0,3))-Math.min(...shifts.slice(0,3))<10,'variation retains a coherent group without identical speeds');
     }
     assert.ok(bank[4].bottomMotion.speed>bank[3].bottomMotion.speed,'right floor rises faster over its longer stroke in every variation');
     assert.ok(bank[4].bottomMotion.returnSpeed>bank[3].bottomMotion.returnSpeed,'following pair separates during retraction in every variation');

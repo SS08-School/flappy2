@@ -13,9 +13,9 @@ export function viewportLayout(width, height) {
 }
 
 export class Game {
-  constructor({ width = METRICS.width, height = METRICS.height, random = Math.random, onEvent = () => {} } = {}) {
+  constructor({ width = METRICS.width, height = METRICS.height, random = Math.random, onEvent = () => {}, chunkPrefetch = null } = {}) {
     this.width = Math.max(METRICS.height/METRICS.maxAspectRatio,Math.min(maxWorldWidth,width)); this.height = METRICS.height; this.random = random; this.onEvent = onEvent;
-    this.reset();
+    this.chunkPrefetch=chunkPrefetch;this.reset();
   }
   get ground() { return this.height - METRICS.groundHeight; }
   get pipeStartX() { return this.bird.x + PHYSICS.firstPipeDistance; }
@@ -30,6 +30,7 @@ export class Game {
     this.classicCenters = [];
     this.lastExitCenter = null; this.lastExitPort = null;
     this.level3Director = null;
+    this.pendingChunk=null;this.chunkPrefetch?.reset();
   }
   resize(width, height) {
     // Only the horizontal camera framing changes with device shape.
@@ -66,23 +67,37 @@ export class Game {
     this.classicSpawned++;
   }
   appendLevel3Chunk() {
-    const last = this.pipes.at(-1);
-    const id = this.chunkSerial++;
-    this.level3Director ||= new Level3Director(this.random);
-    let entryCenter=this.lastExitCenter ?? last?.center ?? this.ground/2;
-    if(id===0&&last?.level===1)entryCenter=last.center+(last.center<this.ground/2?40:-40);
-    const chunk = createLevel3Chunk({
-      x: this.nextChunkX ?? Math.max(this.pipeStartX, last ? last.x + PHYSICS.spacing + 16 : this.pipeStartX),
-      ground: this.ground, entryCenter,
-      entryPort: this.lastExitPort,
-      previousKind: this.lastChunkKind, id, random: this.random, width: METRICS.pipeWidth,
-      kind: this.level3Director.next(id),
-      referenceBirdX: this.bird.x,
-    });
+    if(!this.pendingChunk){
+      const last=this.pipes.at(-1),id=this.chunkSerial;
+      this.level3Director ||= new Level3Director(this.random);
+      let entryCenter=this.lastExitCenter ?? last?.center ?? this.ground/2;
+      if(id===0&&last?.level===1)entryCenter=last.center+(last.center<this.ground/2?40:-40);
+      this.pendingChunk={distance:this.distance,birdX:this.bird.x,options:{
+        x: this.nextChunkX ?? Math.max(this.pipeStartX, last ? last.x + PHYSICS.spacing + 16 : this.pipeStartX),
+        ground: this.ground, entryCenter,
+        entryPort: this.lastExitPort,
+        previousKind: this.lastChunkKind, id, random: this.random, width: METRICS.pipeWidth,
+        kind: this.level3Director.next(id),
+        referenceBirdX: this.bird.x,
+      }};
+    }
+    const pending=this.pendingChunk;
+    const chunk=this.chunkPrefetch?this.chunkPrefetch.take(pending.options):createLevel3Chunk(pending.options);
+    if(!chunk)return false;
+    // Worker delivery must not rewind world scrolling or change motion phase.
+    // Apply only the travel/camera shift since the immutable request was made.
+    if(this.chunkPrefetch){
+      const shift=this.bird.x-pending.birdX-(this.distance-pending.distance);
+      for(const pipe of chunk.pipes){pipe.x+=shift;pipe.referenceBirdX=this.bird.x;Object.assign(pipe,pipePose(pipe));}
+      for(const key of ['startX','coreStartX','endX','nextX','connectionEndX'])if(chunk[key]!==undefined)chunk[key]+=shift;
+      chunk.safePath=chunk.safePath.map(([x,y])=>[x+shift,y]);
+    }
+    this.pendingChunk=null;this.chunkSerial++;
     this.pipes.push(...chunk.pipes); this.lastChunkKind = chunk.kind;
     this.nextChunkX = chunk.nextX;
     this.lastExitCenter = chunk.exitCenter;
     this.lastExitPort = chunk.exitPort;
+    return true;
   }
   activateLevel3() {
     if (this.difficulty === 3 || this.score < LEVEL3_TEST_SCORE) return;
@@ -148,7 +163,9 @@ export class Game {
       }
       // Build captured chunks far enough ahead that even the angled banks
       // exist before entering the view. Prefetch never adds physical spacing.
-      while (this.level3Queued && this.nextChunkX < this.pipeStartX + 800) this.appendLevel3Chunk();
+      while (this.level3Queued && (this.nextChunkX===null || this.nextChunkX < this.pipeStartX + 800)) {
+        if(!this.appendLevel3Chunk())break;
+      }
       for (const pipe of this.pipes) {
         const r = this.bird.radius;
         const collision = pipe.level === 3 ? level3PipeHits(pipe, this.bird, this.ground)

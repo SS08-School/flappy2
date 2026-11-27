@@ -5,6 +5,7 @@ import { flapAngle, impactPresentation, wingPose, idleBob } from './bird-present
 import { GameAudio, DEATH_SOUND_DELAY } from './audio.mjs';
 import { MedalGlimmer } from './medal-presentation.mjs';
 import { pipePose, pipeShaftLength, pipeBounds } from './difficulty.mjs';
+import { createChunkPrefetch } from './chunk-prefetch.mjs';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game'), ctx = canvas.getContext('2d'), ui = $('game-ui');
@@ -33,7 +34,7 @@ try {
   if (Number.isSafeInteger(value) && value >= 0) best = value;
 } catch {}
 
-const game = new Game({ onEvent(type, data) {
+const game = new Game({ chunkPrefetch:createChunkPrefetch(), onEvent(type, data) {
   if (type === 'flap') audio.play('wing');
   if (type === 'hit') {
     audio.play('hit');
@@ -108,7 +109,6 @@ function showReady() {
 }
 function prepareRun() {
   recoverInputFocus();
-  enterMobileFullscreen();
   advance(performance.now());
   if (!loaded || scene.phase !== 'idle' || !['home', 'over'].includes(screen)) return;
   if (screen === 'over' && !resultState().finished) return;
@@ -147,17 +147,10 @@ function recoverInputFocus() {
     pageFocused = true; previous = performance.now(); nextFrameAt = previous;
   }
 }
-function enterMobileFullscreen() {
-  if (!matchMedia('(any-pointer: coarse)').matches || document.fullscreenElement || document.webkitFullscreenElement) return;
-  const root = document.documentElement, request = root?.requestFullscreen || root?.webkitRequestFullscreen;
-  if (request) {
-    try { Promise.resolve(request.call(root, { navigationUI: 'hide' })).catch(() => {}); } catch {}
-  }
-}
 $('play-button').addEventListener('click', prepareRun);
 document.addEventListener('pointerdown', event => {
   if (event.button !== 0 || (event.target.closest('button')&&screen!=='ready'&&game.state!=='playing')) return;
-  event.preventDefault(); enterMobileFullscreen(); flap(event.timeStamp);
+  event.preventDefault(); flap(event.timeStamp);
 }, { capture: true, passive: false });
 document.addEventListener('keydown', event => {
   if(event.code==='Tab'){event.preventDefault();return;}

@@ -5,8 +5,13 @@ import { checkPresentation, checkBirdVariants, checkNewBestPlacement, checkDeath
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 import { checkScoreDigits } from './score-checks.mjs';
 import { checkBackgroundJoins } from './background-checks.mjs';
-import { checkDifficulty, checkLevel3Client, checkFloorVisibility, checkStationaryBankAlignment, checkLiveChunkQueue } from './difficulty-checks.mjs';
-import { checkPassages, checkChunkContinuity, checkWindingTunnels, checkRoofApproach, checkOverlayTips } from './passage-checks.mjs';
+import { checkDifficulty, checkLevel3Client, checkFloorVisibility, checkStationaryBankAlignment, checkLiveChunkQueue, checkMovingSpeedVariety } from './difficulty-checks.mjs';
+import { checkPassages, checkChunkContinuity, checkWindingTunnels, checkRoofApproach, checkOverlayTips, checkTurnWindows } from './passage-checks.mjs';
+import { checkBackgroundPrefetch } from './prefetch-checks.mjs';
+
+test('background obstacle preparation never blocks flaps or rewinds the queue', checkBackgroundPrefetch);
+test('adjacent moving pipes use distinct speeds',checkMovingSpeedVariety);
+test('turns allow varied approach states without horizontal control',checkTurnWindows);
 test('original game rules and widescreen geometry', checkEngine);
 test('continuous random classic heights without alternating repeats', checkClassicVariety);
 test('foreground diagonal overlays leave pipe tips uncovered', checkOverlayTips);

@@ -279,7 +279,7 @@ function gateArrival(pipe,offset){
   }
   return (low+high)/2+1e-7;
 }
-function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBirdX}){
+function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBirdX,random}){
   const firstAt=gateArrival(chunk.corePipes[0],-12);
   const incoming=entryPort||{top:entryCenter-50,bottom:entryCenter+50,center:entryCenter};
   const arrival=chunkOpening(chunk.corePipes,firstAt,ground,entryCenter);
@@ -288,13 +288,17 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   if(!needsJoin)return chunk;
   const pitch=chunk.family==='rush'?78:width+3;
   const count=Math.max(1,Math.ceil(Math.abs(arrival.center-incoming.center)/28)-1),span=count*pitch;
+  const step=(arrival.center-incoming.center)/(count+1),gap=124+2*Math.abs(step);
   const connectors=[];
   for(let i=0;i<count;i++){
-    const progress=(i+1)/(count+1),bend=count>3&&i>0&&i<count-1?(i%2?3:-3):0;
+    // A transition follows the required overall height change, but its tips
+    // form uneven pockets rather than another straight staircase. Extra room
+    // accounts for the full flap arc while changing elevation between banks.
+    const progress=(i+1)/(count+1),bend=count>1?(i%2?-1:1)*step*(.75+random()*.1):0;
     const center=clamp(incoming.center+(arrival.center-incoming.center)*progress+bend,100,ground-112);
     const native=center-(ground-336)/2,dx=i*pitch;
-    const pipe={x:chunk.startX+dx,chunkOffset:dx,width,gap:124,level:3,kind:chunk.kind,chunkId:id,connector:true,scored:false,
-      topRecord:[0,native-62+64,0],bottomRecord:[0,native+62+64,0],layoutOffset:0,verticalOffset:(ground-336)/2-64,
+    const pipe={x:chunk.startX+dx,chunkOffset:dx,width,gap,level:3,kind:chunk.kind,chunkId:id,connector:true,scored:false,
+      topRecord:[0,native-gap/2+64+(random()-.5)*6,0],bottomRecord:[0,native+gap/2+64+(random()-.5)*6,0],layoutOffset:0,verticalOffset:(ground-336)/2-64,
       safetyGroup:-i-1,shaftGap:3,referenceBirdX};
     Object.assign(pipe,pipePose(pipe));connectors.push(pipe);
   }
@@ -304,7 +308,7 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   // hold the entire convoy back after it caught up, including left of the bird.
   if(chunk.family==='rush'){
     const speed=chunk.corePipes[0].motion.speed;
-    for(const pipe of connectors)pipe.motion={type:'rush',speed,trigger:chunk.corePipes[0].motion.trigger};
+    for(const [i,pipe]of connectors.entries())pipe.motion={type:'rush',speed:speed+8*(connectors.length-i),trigger:chunk.corePipes[0].motion.trigger};
     // The guides replace the old empty approach reservation; retaining both
     // would leave a conspicuous wait before the first moving gate.
     const entryInset=chunk.corePipes[0].x-chunk.startX-span;
@@ -476,7 +480,7 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
   nodes.push([endX,exit],[nextX,exit]);
   for(const pipe of pipes)Object.assign(pipe,pipePose(pipe));
   let chunk={kind:source.id,family:source.family,ground,contouredPassage:source.motif==='angled-tunnel',guidedEntry:source.guidedEntry||false,guidedRisingExit,pipes,corePipes:pipes,coreStartX:x,connectors:[],layout,nextX,endX,startX:x,exitCenter:exit,safePath:nodes,source:source.source};
-  if(previousKind&&entryCenter!==undefined)chunk=connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBirdX});
+  if(previousKind&&entryCenter!==undefined)chunk=connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBirdX,random});
   chunk.exitPort=chunkOpening(chunk.pipes,chunk.nextX-12,ground,exit);
   chunk.exitCenter=chunk.exitPort.center;
   return chunk;

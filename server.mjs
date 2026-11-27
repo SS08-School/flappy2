@@ -13,6 +13,7 @@ export async function createApp() {
   files['/difficulty.mjs'] = 'difficulty.mjs';
   files['/level3-chunks.mjs'] = 'level3-chunks.mjs';
   files['/pipe-safety.mjs'] = 'pipe-safety.mjs';
+  files['/chunk-prefetch.mjs'] = 'chunk-prefetch.mjs'; files['/chunk-worker.mjs'] = 'chunk-worker.mjs';
   files['/manifest.webmanifest'] = 'manifest.webmanifest';
   for (const size of [180,192,512]) files[`/assets/app/icon-${size}.png`] = `assets/app/icon-${size}.png`;
   for (const file of Object.values(SOUND_FILES)) files[`/assets/audio/${file}`] = `assets/audio/${file}`;

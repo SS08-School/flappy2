@@ -122,7 +122,7 @@ export async function checkServer() {
     const page = await fetch(base); assert.equal(page.status, 200); assert.equal(page.headers.get('set-cookie'), null);
     const html = await page.text(), body = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/)[1];
     assert.equal(body.replace(/<[^>]*>/g, '').trim(), '', 'no visible text outside official image sprites');
-    for (const path of ['/game.js','/engine.mjs','/assets.mjs','/transitions.mjs','/bird-presentation.mjs','/style.css']) assert.equal((await fetch(base + path)).status, 200);
+    for (const path of ['/game.js','/engine.mjs','/assets.mjs','/transitions.mjs','/bird-presentation.mjs','/chunk-prefetch.mjs','/chunk-worker.mjs','/style.css']) assert.equal((await fetch(base + path)).status, 200);
     const manifestResponse=await fetch(base+'/manifest.webmanifest');
     assert.equal(manifestResponse.headers.get('content-type'),'application/manifest+json');
     const manifest=await manifestResponse.json();assert.equal(manifest.display,'fullscreen');

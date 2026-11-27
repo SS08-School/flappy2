@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
 import { createLevel3Chunk, pipePose, pipeShaftLength, pipeBounds, level3PipeHits } from '../public/difficulty.mjs';
+import { createChunkPrefetch } from '../public/chunk-prefetch.mjs';
 
 export async function createClient({ reducedMotion = true, width = 480, height = 640, dpr = 1, random = () => 0, coarsePointer = false, fullscreenRequest, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
   const elements = new Map(), frames = [], stored = new Map(), images = [], events = new Map(), windowEvents=new Map();
@@ -45,7 +46,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
   };
   const visualMath = Object.create(Math); visualMath.random = random;
   const sandbox = {
-    document, window:{addEventListener(type,fn){windowEvents.set(type,fn);}}, Math:visualMath, devicePixelRatio:dpr, Game, METRICS, PHYSICS, viewportLayout, pipePose, pipeShaftLength, pipeBounds, console, performance:{now:()=>now},
+    document, window:{addEventListener(type,fn){windowEvents.set(type,fn);}}, Math:visualMath, devicePixelRatio:dpr, Game, METRICS, PHYSICS, viewportLayout, pipePose, pipeShaftLength, pipeBounds, createChunkPrefetch, console, performance:{now:()=>now},
     GameAudio: class { constructor() { return audio; } }, DEATH_SOUND_DELAY: .2,
     matchMedia:query=>({matches:query.includes('coarse')?coarsePointer:reducedMotion}), ResizeObserver:class { observe() {} },
     requestAnimationFrame:callback=>frames.push(callback),
@@ -443,11 +444,16 @@ export async function checkPreciseInputTiming() {
   const fading=await createClient({reducedMotion:false});fading.tick(.4);fading.controller.prepareRun();
   fading.tick(.22);press(fading);fading.tick(.7);
   assert.equal(fading.controller.game.state,'playing','a press during the ready fade is retained until the screen is ready');
-  let requests=0;
-  const mobile=await createClient({coarsePointer:true,fullscreenRequest:()=>{requests++;return Promise.resolve();}});
-  mobile.controller.prepareRun();assert.equal(requests,1,'mobile play requests fullscreen within the activating gesture');
-  const desktop=await createClient({fullscreenRequest:()=>{throw new Error('desktop must stay in its window');}});desktop.controller.prepareRun();
-  const rejected=await createClient({coarsePointer:true,fullscreenRequest:()=>Promise.reject(new Error('unsupported'))});
-  rejected.controller.prepareRun();rejected.controller.flap();await Promise.resolve();assert.equal(rejected.controller.game.state,'playing','fullscreen denial cannot prevent play');
-  return 'Precise input: timestamps, focus-event races, queued ready taps and mobile fullscreen success/failure pass without adding flap delay.';
+  for(const coarsePointer of [false,true]){
+    let requests=0;
+    const c=await createClient({coarsePointer,fullscreenRequest:()=>{requests++;return Promise.resolve();}});
+    c.controller.prepareRun();
+    c.events.get('pointerdown')({button:0,target,preventDefault(){}});
+    c.tick(.02);press(c);
+    c.events.get('pointerdown')({button:0,target,preventDefault(){}});
+    assert.equal(requests,0,'Play, keyboard and pointer input never request fullscreen');
+    assert.equal(c.controller.game.state,'playing','touch and desktop play work in the normal browser window');
+    assert.equal(c.controller.game.bird.vy,PHYSICS.flap,'windowed pointer input still flaps immediately');
+  }
+  return 'Precise input: timestamps, focus-event races, queued ready taps and windowed desktop/mobile play pass without adding flap delay or requesting fullscreen.';
 }

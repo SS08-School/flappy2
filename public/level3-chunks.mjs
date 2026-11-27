@@ -17,14 +17,20 @@ function rising(id,window=false){
   chunk.family='rising';chunk.motif='rising';chunk.minEntry=156;
   const exits=window?[[60,246],[136,282],[180,286]]:[[64,250],[132,280],[184,286]];
   exits.forEach(([top,bottom],i)=>chunk.pairs.push(pair((i+3)*pitch,top,bottom,{safetyGroup:i+1,anchorEntry:false})));
+  const source=chunk.pairs;
+  chunk.layout=random=>source.map((p,i)=>{
+    if(i>=3)return {...p};
+    const speed=42*(1+(i-1)*.08+(random()-.5)*.04);
+    return {...p,motion:rail(32,-64,speed,-63/speed)};
+  });
   return chunk;
 }
 function roofApproach(){
-  // 15–18 s: an enclosed staircase takes the bird low before the diagonal
-  // floor bank lifts it again. Keep the final opening at the bank's intake.
-  const chunk=vertical(ROOF_APPROACH_ID,[15,18],[150,164,182,200,214,220],112);
+  // Descend through uneven pockets before the floor bank lifts the bird.
+  // Neither wall forms the old six-post staircase.
+  const chunk=vertical(ROOF_APPROACH_ID,[15,18],[150,182,168,216,202,220],112);
   Object.assign(chunk,{rare:'roof',minEntry:168,maxEntry:168,preserveRoute:true,passageHeight:76});
-  chunk.pairs.forEach(p=>{p.minimumGap=112;});
+  chunk.pairs.forEach((p,i)=>{p.minimumGap=108;p.top[1]+=[0,-3,-6,2,-2,0][i];p.bottom[1]+=[0,4,-4,6,-4,0][i];});
   return chunk;
 }
 function bank(id,{continuation=false}={}){
@@ -58,7 +64,8 @@ function bank(id,{continuation=false}={}){
       return {dx,top:[tx-dx-26,ty+64,Math.PI/4],roofGroup:i===5?2:i?1:0,safetyGroup:group,minimumShaft:group===1?8:24,bottom:[bx-dx-26,by+64,-Math.PI/4],
         bottomMotion:group===2?undefined:group===1?{type:'bank',from:low,to:-35,speed:profile.pair*travelRatio,start:1.06-160/profile.pair,returnSpeed:profile.lead*travelRatio,
           returnTo:low,alongShaft:true,group}
-          :{type:'sweep',from:45,to:-20,speed:65/(trioEnd-trioStart),start:trioStart,alongShaft:true,group},
+          :{type:'sweep',from:45,to:-20,speed:65/(trioEnd-trioStart)*[.94,1.06,.99][i],
+            start:trioEnd-(trioEnd-trioStart)/[.94,1.06,.99][i],alongShaft:true,group},
       };
     });
     if(continuation)pairs.push(pair(530,138,282,{motion:rail(-40,50,48,-.5),safetyGroup:1,allowRoofOverlap:true,afterFloor:true}));
@@ -126,11 +133,16 @@ function rushGates(short=false){
   return {id:short?'short-left-rush-gates':'left-rush-gates',source:short?[52,57]:[52,64],family:'rush',motif:'rush',entryInset:160,exitAtLastGate:true,clearance:24,pairs:layout(()=>.5),layout};
 }
 function windingTunnel(id,long=false,low=false){
-  // The 34–43 s passage mixes brief stairs with uneven tips. Both walls
-  // change elevation, with a little independent variation in the roof.
-  const profiles=[[0,12,-8,20],[0,-12,8,-20],[0,16,32,18],[0,-16,-32,-18]];
+  // Floors are mostly irregular, with only one optional short step run.
+  // Roofs have their own uneven silhouette instead of following the floor.
+  const profiles=[
+    {floor:[0,18,-12,6],roof:[4,-8,6,-4]},
+    {floor:[0,-16,12,-8],roof:[-4,8,-6,6]},
+    {floor:[0,22,-6,16],roof:[0,12,-8,4]},
+    {floor:[0,-14,-28,-8],roof:[0,-18,-10,-24]},
+  ];
   const layout=random=>{
-    const shape=profiles[Math.min(profiles.length-1,Math.floor(random()*profiles.length))];
+    const profile=profiles[Math.min(profiles.length-1,Math.floor(random()*profiles.length))],shape=profile.floor;
     const depth=.95+random()*.1,center=168+(low?6:0);
     // A rare long route contains a real ledge, rather than distributing the
     // entire dip over many stairs. Its roof follows one column later so the
@@ -138,16 +150,14 @@ function windingTunnel(id,long=false,low=false){
     const detail=i=>(i===1||i===2||i>5)?shape[i%4]*.2:0;
     const bounded=v=>Math.max(-8,Math.min(112,v));
     const floor=[0,-8,12,4,104,96,110,98,108].map((v,i)=>bounded(v*depth+detail(i)));
-    const roof=[0,6,-8,10,4,104,92,106,88].map((v,i)=>bounded(v*depth-detail(i)*.6));
+    const roof=[6,0,10,-8,8,-4,104,92,106].map((v,i)=>bounded(v*depth-detail(i)*.6));
     const pairs=long?floor.map((offset,i)=>{
-      const bottom=low?-roof[i]:offset,top=Math.min(low?-offset:roof[i],bottom+8);
+      const bottom=low?-roof[i]:offset,top=Math.min(low?-offset:roof[i],bottom+16);
       return pair(i*pitch,center-62+top,center+62+bottom,{minimumGap:108});
     }):shape.map((offset,i)=>{
-      const y=center+offset*depth;
-      const turn=Math.max(Math.abs(offset-(shape[i-1]??offset)),Math.abs((shape[i+1]??offset)-offset))*depth;
-      const gap=turn>28?124:116;
-      const roofOffset=[0,-4,6,-6][i]*(low?-1:1);
-      return pair(i*pitch,y-gap/2+roofOffset,y+gap/2,{minimumGap:108});
+      const direction=low?-1:1;
+      const roof=(profile.roof[i]*depth+random()*6-3)*direction;
+      return pair(i*pitch,center-62+roof,center+62+offset*depth*direction,{minimumGap:108});
     });
     if(long)pairs.push(pair(9*pitch+12,178,286,{
       top:[0,178+64,-Math.PI/4],allowRoofOverlap:true,overlayAfter:true,anchorEntry:false,safetyGroup:2,passageHeight:92,
@@ -156,6 +166,12 @@ function windingTunnel(id,long=false,low=false){
   };
   return {id,source:long?[34,39]:low?[39,43]:[34,37],family:'tunnel',rare:long?'long':undefined,
     minEntry:156,maxEntry:180,preserveRoute:true,routeSlope:long?1:.72,passageHeight:76,clearance:long?12:24,pairs:layout(()=>.5),layout};
+}
+function shortUnevenTunnel(id,source,low=false){
+  const chunk=vertical(id,source,[168,168,168],124);
+  const roof=low?[0,12,-8]:[0,-12,8],floor=low?[0,22,-12]:[0,-24,10];
+  chunk.pairs.forEach((p,i)=>{p.top[1]+=roof[i];p.bottom[1]+=floor[i];p.minimumGap=108;});
+  return chunk;
 }
 function descendingPursuit(){
   // 32–34 s: one complete gate plunges along a straight, readable rail.
@@ -176,7 +192,7 @@ function tunnelPlunger(){
   moving.motion={type:'plunger',from:-64,to:64,speed:210,start:(moving.dx-38)/118,returnSpeed:210,slowAt:(moving.dx+14)/118,afterSpeed:60};
   return chunk;
 }
-export const LEVEL3_OPENING_CHUNK=vertical('opening-tunnel',[6,10],[168,176,168],116,pitch);
+export const LEVEL3_OPENING_CHUNK=vertical('opening-tunnel',[6,10],[168,168,168],116,pitch);
 LEVEL3_OPENING_CHUNK.family='opening';
 export const LEVEL3_CHUNKS=[
   vertical('stationary-tunnel',[12,14.7],[168,168,168],108),
@@ -188,8 +204,8 @@ export const LEVEL3_CHUNKS=[
   bank('diagonal-fall',{continuation:true}),
   bank('displaced-roof-bank'),
   diagonalTunnel(),diagonalTunnel(true),diagonalTunnel(false,true),
-  vertical('short-high-tunnel',[34,36.5],[168,154,144],112),
-  vertical('short-low-tunnel',[36.5,39],[168,182,192],112),
+  shortUnevenTunnel('short-high-tunnel',[34,36.5]),
+  shortUnevenTunnel('short-low-tunnel',[36.5,39],true),
   windingTunnel('stepped-roof-tunnel'),windingTunnel('floor-valley-tunnel',false,true),
   rushGates(),
   rushGates(true),
