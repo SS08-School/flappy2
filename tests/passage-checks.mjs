@@ -126,7 +126,8 @@ export function checkTurnWindows(){
 }
 export function checkChunkContinuity(){
   const fixtures=[['rising-trio','long-low-tunnel'],['short-low-tunnel','long-dropping-tunnel'],
-    ['tunnel-plunger','stationary-tunnel'],['long-low-tunnel','rising-trio'],['stationary-tunnel','rising-trio']];
+    ['tunnel-plunger','stationary-tunnel'],['long-low-tunnel','rising-trio'],['stationary-tunnel','rising-trio'],
+    ['rising-floor-interlude','stationary-tunnel'],['rising-floor-interlude','stepped-roof-tunnel']];
   for(const kinds of fixtures)for(const profile of [.1,.5,.9]){
     const scene=sequence(kinds,336,168,()=>profile),[left,right]=scene.chunks;
     const join=[left.pipes.at(-1),...right.connectors,right.corePipes[0]];

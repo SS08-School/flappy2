@@ -284,21 +284,40 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   const incoming=entryPort||{top:entryCenter-50,bottom:entryCenter+50,center:entryCenter};
   const arrival=chunkOpening(chunk.corePipes,firstAt,ground,entryCenter);
   const shared=Math.min(incoming.bottom,arrival.bottom)-Math.max(incoming.top,arrival.top);
-  const needsJoin=shared<80||incoming.center<arrival.top+32||incoming.center>arrival.bottom-32;
+  const needsJoin=shared<80-1e-7||incoming.center<arrival.top+32-1e-7||incoming.center>arrival.bottom-32+1e-7;
   if(!needsJoin)return chunk;
   const pitch=chunk.family==='rush'?78:width+3;
-  const count=Math.max(1,Math.ceil(Math.abs(arrival.center-incoming.center)/28)-1),span=count*pitch;
-  const step=(arrival.center-incoming.center)/(count+1),gap=124+2*Math.abs(step);
+  const count=Math.max(1,Math.ceil((Math.abs(arrival.center-incoming.center)-1e-7)/28)-1),span=count*pitch;
+  const moving=chunk.corePipes.some(p=>p.motion||p.topMotion||p.bottomMotion);
+  const step=(arrival.center-incoming.center)/(count+1),gap=moving?124:124+2*Math.abs(step);
   const connectors=[];
   for(let i=0;i<count;i++){
     // A transition follows the required overall height change, but its tips
     // form uneven pockets rather than another straight staircase. Extra room
-    // accounts for the full flap arc while changing elevation between banks.
+    // accounts for large static turns; moving formations retain their original
+    // guide opening instead of acquiring extra headroom.
     const progress=(i+1)/(count+1),bend=count>1?(i%2?-1:1)*step*(.75+random()*.1):0;
-    const center=clamp(incoming.center+(arrival.center-incoming.center)*progress+bend,100,ground-112);
+    let center=clamp(incoming.center+(arrival.center-incoming.center)*progress+bend,100,ground-112);
+    if(moving){
+      // Keep the original-sized guides aligned at both ends. Larger openings
+      // previously hid an overlarge first/last height jump.
+      const remaining=count-i-1,previous=connectors.at(-1)?.center;
+      let low=Math.max(100,arrival.top+80-gap/2-42*remaining,
+        i===0?incoming.top+80-gap/2:-Infinity,previous===undefined?-Infinity:previous-42);
+      let high=Math.min(ground-112,arrival.bottom-80+gap/2+42*remaining,
+        i===0?incoming.bottom-80+gap/2:Infinity,previous===undefined?Infinity:previous+42);
+      if(connectors.length>1){
+        const direction=Math.sign(previous-connectors.at(-2).center);
+        const turnLow=direction<0?Math.max(low,previous+4):low;
+        const turnHigh=direction>0?Math.min(high,previous-4):high;
+        if(turnLow<=turnHigh){low=turnLow;high=turnHigh;}
+      }
+      center=clamp(center,low,high);
+    }
     const native=center-(ground-336)/2,dx=i*pitch;
+    const roofJitter=moving?0:(random()-.5)*6,floorJitter=moving?0:(random()-.5)*6;
     const pipe={x:chunk.startX+dx,chunkOffset:dx,width,gap,level:3,kind:chunk.kind,chunkId:id,connector:true,scored:false,
-      topRecord:[0,native-gap/2+64+(random()-.5)*6,0],bottomRecord:[0,native+gap/2+64+(random()-.5)*6,0],layoutOffset:0,verticalOffset:(ground-336)/2-64,
+      topRecord:[0,native-gap/2+64+roofJitter,0],bottomRecord:[0,native+gap/2+64+floorJitter,0],layoutOffset:0,verticalOffset:(ground-336)/2-64,
       safetyGroup:-i-1,shaftGap:3,referenceBirdX};
     Object.assign(pipe,pipePose(pipe));connectors.push(pipe);
   }
@@ -308,7 +327,7 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   // hold the entire convoy back after it caught up, including left of the bird.
   if(chunk.family==='rush'){
     const speed=chunk.corePipes[0].motion.speed;
-    for(const [i,pipe]of connectors.entries())pipe.motion={type:'rush',speed:speed+8*(connectors.length-i),trigger:chunk.corePipes[0].motion.trigger};
+    for(const pipe of connectors)pipe.motion={type:'rush',speed,trigger:chunk.corePipes[0].motion.trigger};
     // The guides replace the old empty approach reservation; retaining both
     // would leave a conspicuous wait before the first moving gate.
     const entryInset=chunk.corePipes[0].x-chunk.startX-span;
@@ -351,7 +370,7 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
   if(entryPort&&source.family==='rush'&&!['rush','interlude'].includes(previous?.family))x+=Math.max(0,(previous?.clearance||3)-3);
   // Continue the tunnel's normal three-pixel pipe gap across section edges.
   // The full shaft footprint below still reserves room for angled/moving posts.
-  const clearance=['rush','interlude'].includes(source.family)?source.clearance:3;
+  const clearance=source.family==='rush'?source.clearance:3;
   const layout=source.layout?source.layout(random):source.pairs;
   const amplitude=Math.max(...layout.flatMap(p=>[p.motion?.amplitude||0,p.topMotion?.amplitude||0,p.bottomMotion?.amplitude||0]));
   const nominalCenter=(source.anchor??168)+(ground-336)/2;

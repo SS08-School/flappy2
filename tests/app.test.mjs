@@ -10,7 +10,7 @@ import { checkPassages, checkChunkContinuity, checkWindingTunnels, checkRoofAppr
 import { checkBackgroundPrefetch } from './prefetch-checks.mjs';
 
 test('background obstacle preparation never blocks flaps or rewinds the queue', checkBackgroundPrefetch);
-test('adjacent moving pipes use distinct speeds',checkMovingSpeedVariety);
+test('intentional pipe groups stay synchronized while independent neighbors vary',checkMovingSpeedVariety);
 test('turns allow varied approach states without horizontal control',checkTurnWindows);
 test('original game rules and widescreen geometry', checkEngine);
 test('continuous random classic heights without alternating repeats', checkClassicVariety);

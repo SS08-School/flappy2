@@ -17,12 +17,6 @@ function rising(id,window=false){
   chunk.family='rising';chunk.motif='rising';chunk.minEntry=156;
   const exits=window?[[60,246],[136,282],[180,286]]:[[64,250],[132,280],[184,286]];
   exits.forEach(([top,bottom],i)=>chunk.pairs.push(pair((i+3)*pitch,top,bottom,{safetyGroup:i+1,anchorEntry:false})));
-  const source=chunk.pairs;
-  chunk.layout=random=>source.map((p,i)=>{
-    if(i>=3)return {...p};
-    const speed=42*(1+(i-1)*.08+(random()-.5)*.04);
-    return {...p,motion:rail(32,-64,speed,-63/speed)};
-  });
   return chunk;
 }
 function roofApproach(){
@@ -64,8 +58,7 @@ function bank(id,{continuation=false}={}){
       return {dx,top:[tx-dx-26,ty+64,Math.PI/4],roofGroup:i===5?2:i?1:0,safetyGroup:group,minimumShaft:group===1?8:24,bottom:[bx-dx-26,by+64,-Math.PI/4],
         bottomMotion:group===2?undefined:group===1?{type:'bank',from:low,to:-35,speed:profile.pair*travelRatio,start:1.06-160/profile.pair,returnSpeed:profile.lead*travelRatio,
           returnTo:low,alongShaft:true,group}
-          :{type:'sweep',from:45,to:-20,speed:65/(trioEnd-trioStart)*[.94,1.06,.99][i],
-            start:trioEnd-(trioEnd-trioStart)/[.94,1.06,.99][i],alongShaft:true,group},
+          :{type:'sweep',from:45,to:-20,speed:65/(trioEnd-trioStart),start:trioStart,alongShaft:true,group},
       };
     });
     if(continuation)pairs.push(pair(530,138,282,{motion:rail(-40,50,48,-.5),safetyGroup:1,allowRoofOverlap:true,afterFloor:true}));
