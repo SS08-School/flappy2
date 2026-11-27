@@ -1,5 +1,5 @@
 import { LEVEL3_REFERENCE, LEVEL3_CHUNKS, LEVEL3_OPENING_CHUNK, ROOF_APPROACH_ID } from './level3-chunks.mjs';
-import { fitPassage, postVertices, clipToGround, pathHeight, slabRange } from './pipe-safety.mjs';
+import { fitPassage, postVertices, clipToGround, pathHeight, slabRange, polygonsHaveGap } from './pipe-safety.mjs';
 export const LEVEL3_TEST_SCORE=5;
 export const LEVEL3_PIPE_SPEED=LEVEL3_REFERENCE.speed;
 export const LEVEL3_CHUNK_KINDS=LEVEL3_CHUNKS.map(chunk=>chunk.id);
@@ -8,7 +8,7 @@ export const PIPE_EXPOSURE={cap:26,ordinaryShaft:24,rapidShaft:2,ceilingMargin:1
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 export class Level3Director {
   constructor(random=Math.random){
-    this.random=random;this.nextLong=5+Math.floor(random()*3);this.recent=[];this.lastDescent=-Infinity;this.lastPlunger=-Infinity;this.lastRush=-Infinity;
+    this.random=random;this.nextLong=7+Math.floor(random()*3);this.recent=[];this.lastDescent=-Infinity;this.lastPlunger=-Infinity;this.lastRush=-Infinity;
     this.pendingKind=null;this.sections=0;this.lastRushSection=-Infinity;this.lastRoofSection=-Infinity;
   }
   next(id){
@@ -16,7 +16,7 @@ export class Level3Director {
     if(this.pendingKind){kind=this.pendingKind;this.pendingKind=null;}
     else if(id===0)kind=LEVEL3_OPENING_ID;
     else if(id>=this.nextLong){
-      this.nextLong=id+10+Math.floor(this.random()*5);kind=this.random()<.5?'long-dropping-tunnel':'long-low-tunnel';
+      this.nextLong=id+7+Math.floor(this.random()*3);kind=this.random()<.5?'long-dropping-tunnel':'long-low-tunnel';
     }else{
       const last=LEVEL3_CHUNKS.find(c=>c.id===this.recent.at(-1));
       let pool=LEVEL3_CHUNKS.filter(c=>!c.rare&&!this.recent.includes(c.id)&&(this.sections>=5||!['rush','plunger'].includes(c.family))&&(c.family!=='rush'||id-this.lastRush>=6&&this.sections-this.lastRushSection>=6)&&(c.motif!=='floor-bank'||this.sections-this.lastRoofSection>=7)&&(c.id!=='descending-pursuit'||id>=5&&id-this.lastDescent>=8)&&(c.id!=='tunnel-plunger'||id-this.lastPlunger>=8));
@@ -221,6 +221,20 @@ function postEndX(pipe,ground,part){
   return end;
 }
 export function pipeShaftLength(pipe,ground,up=false){return up&&pipe.topLength?pipe.topLength:(ground+400)/Math.SQRT1_2;}
+function exposeRoofTips(pipes,ground){
+  // Slide only the foreground roof along x until its near edge clears every
+  // complete rear cap. Shaft overlap and the lower exit stay as authored.
+  for(const overlay of pipes.filter(p=>p.allowRoofOverlap&&p.topRecord[2]<-.1)){
+    const caps=pipes.filter(p=>p!==overlay&&!p.noTop).map(p=>postVertices(p,pipePose(p).top,true,PIPE_EXPOSURE.cap));
+    for(let pass=0;pass<=caps.length;pass++){
+      const post=pipePose(overlay).top,shaft=postVertices(overlay,post,true,pipeShaftLength(overlay,ground,true));
+      const covered=caps.filter(cap=>!polygonsHaveGap(shaft,cap));if(!covered.length)break;
+      const co=Math.cos(post.angle),si=Math.sin(post.angle),ox=overlay.x+overlay.width/2+post.x;
+      const shift=Math.max(...covered.map(cap=>(Math.max(...cap.map(([x,y])=>(x-ox)*co+(y-post.y)*si))+overlay.width/2+3)/co));
+      overlay.topRecord[0]+=Math.max(.01,shift);
+    }
+  }
+}
 export function pipeBounds(pipe,ground,xOffset=0){
   const pose=pipePose(pipe,xOffset);let minX=Infinity,maxX=-Infinity;
   for(const [post,up] of [[pose.top,true],[pose.bottom,false]]){
@@ -450,6 +464,7 @@ export function createLevel3Chunk({x,ground,entryCenter,entryPort,random=Math.ra
     }
     const exit=safety.nodes.at(-1)[1];safety.nodes.push([endX,exit],[endX+clearance,exit]);
   }
+  exposeRoofTips(pipes,ground);
   // Reserve the full visible shaft footprint, at both movement extremes.
   // The next chunk begins after these tails, not merely after the last cap.
   for(const pipe of pipes){

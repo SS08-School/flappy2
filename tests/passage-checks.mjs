@@ -18,10 +18,11 @@ function sharedHandoff(left,right,ground){
   const at=right.startX-12,a=chunkOpening(left.pipes,at,ground,left.exitCenter),b=chunkOpening(right.pipes,at,ground,left.exitCenter);
   return Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);
 }
-// Search actual flap/no-flap inputs at 50 ms decision intervals. Every arc is
+// Search actual flap/no-flap inputs at 50 ms decision intervals by default.
+// Tight-route checks consider every physics frame instead. Every arc is
 // integrated at the game's 60 Hz, with at least 200 ms between presses. The beam
 // keeps real states (no teleporting, interpolation of states or changed physics).
-export function flyPassage(scene,{minFlapInterval=.2,safetyMargin=0,beamWidth=64}={}){
+export function flyPassage(scene,{minFlapInterval=.2,safetyMargin=0,beamWidth=64,decisionFrames=3}={}){
   const start=scene.chunks[0].startX-140,dt=PHYSICS.step;
   const minFlapFrames=Math.ceil(minFlapInterval/dt);
   const total=Math.ceil((scene.chunks.at(-1).nextX-start)/(LEVEL3_PIPE_SPEED*dt));
@@ -40,18 +41,18 @@ export function flyPassage(scene,{minFlapInterval=.2,safetyMargin=0,beamWidth=64
     limits.push([top,bottom]);targets.push(Math.max(top,Math.min(bottom,targetAt(scene.chunks,x))));
   }
   let beam=[{y:scene.entryCenter,vy:0,age:60,flaps:0}];
-  for(let frame=0;frame<total;frame+=3){
-    const candidates=new Map(),target=targets[frame+3],targetV=(target-targets[frame])/(dt*3);
+  for(let frame=0;frame<total;frame+=decisionFrames){
+    const candidates=new Map(),target=targets[frame+decisionFrames],targetV=(target-targets[frame])/(dt*decisionFrames);
     for(const state of beam)for(const flap of [false,true]){
       if(flap&&state.age<minFlapFrames)continue;
       let y=state.y,vy=flap?PHYSICS.flap:state.vy,valid=true;
-      for(let step=1;step<=3;step++){
+      for(let step=1;step<=decisionFrames;step++){
         y+=vy*dt+PHYSICS.gravity*dt*dt;vy+=PHYSICS.gravity*dt;
         const [top,bottom]=limits[frame+step];
         if(y<top||y>bottom){valid=false;break;}
       }
       if(!valid)continue;
-      const age=flap?3:state.age+3,flaps=state.flaps+Number(flap);
+      const age=flap?decisionFrames:state.age+decisionFrames,flaps=state.flaps+Number(flap);
       const cost=(y-target)**2+(vy-targetV)**2*.006+flaps*.01;
       const key=Math.round(y/3)+':'+age;
       if(!candidates.has(key)||candidates.get(key).cost>cost)candidates.set(key,{y,vy,age,flaps,cost});
@@ -82,13 +83,31 @@ function distance(a,b){
   for(const [points,edges] of [[a,b],[b,a]])for(const p of points)for(let i=0;i<edges.length;i++)minimum=Math.min(minimum,pointSegment(p,edges[i],edges[(i+1)%edges.length]));
   return minimum;
 }
+export function checkOverlayTips(){
+  let tested=0;
+  for(const kind of LEVEL3_CHUNK_KINDS)for(const ground of [336,575,960])for(const entry of [100,ground/2,ground-100])for(const profile of [.1,.5,.9]){
+    const chunk=createLevel3Chunk({x:300,ground,entryCenter:entry,referenceBirdX:188,kind,random:()=>profile});
+    for(const pipe of chunk.pipes.filter(p=>p.allowRoofOverlap&&p.topRecord[2]<-.1)){
+      const shaft=postVertices(pipe,pipePose(pipe).top,true,pipeShaftLength(pipe,ground,true));
+      for(const other of chunk.pipes.filter(p=>p!==pipe&&!p.noTop)){
+        const cap=postVertices(other,pipePose(other).top,true,26);
+        assert.ok(!overlap(shaft,cap),kind+': foreground overlays must leave every rear pipe cap uncovered');
+      }
+      tested++;
+    }
+  }
+  assert.ok(tested>=100,'tip visibility includes both long routes and every diagonal variant');
+  return 'Overlay tips: full rear caps stay visible across every overlay, layout variation, entry height and supported world height.';
+}
 export function checkChunkContinuity(){
   const fixtures=[['rising-trio','long-low-tunnel'],['short-low-tunnel','long-dropping-tunnel'],
     ['tunnel-plunger','stationary-tunnel'],['long-low-tunnel','rising-trio'],['stationary-tunnel','rising-trio']];
   for(const kinds of fixtures)for(const profile of [.1,.5,.9]){
     const scene=sequence(kinds,336,168,()=>profile),[left,right]=scene.chunks;
     const join=[left.pipes.at(-1),...right.connectors,right.corePipes[0]];
-    for(let i=1;i<join.length;i++){
+    assert.ok(Math.abs(join[1].x-left.endX-3)<1e-7,
+      'the next pipe follows the full visible exit footprint by three pixels');
+    for(let i=2;i<join.length;i++){
       assert.ok(Math.abs(join[i].x-join[i-1].x-55)<1e-7,
         kinds.join(' -> ')+': boundary and connecting pipes must retain the ordinary tunnel pitch');
     }
@@ -117,25 +136,27 @@ export function checkWindingTunnels(){
     for(const profile of [.1,.35,.6,.85])for(const depth of [0,.5,1])for(const ground of [336,575]){
       const values=[profile,depth],random=()=>values.length?values.shift():.5;
       const chunk=createLevel3Chunk({x:300,ground,entryCenter:168+(ground-336)/2,referenceBirdX:188,kind,random});
-      const bank=chunk.corePipes.slice(0,long?9:5),poses=bank.map(p=>pipePose(p));
+      const bank=chunk.corePipes.slice(0,long?9:4),poses=bank.map(p=>pipePose(p));
       const ys=poses.map(p=>p.center),range=Math.max(...ys)-Math.min(...ys);
-      assert.equal(chunk.corePipes.length,long?10:5,'variation keeps the existing section length');
-      assert.ok(Math.abs(bank.at(-1).x-bank[0].x+52-(long?492:272))<1e-7,'main tunnel keeps its authored footprint');
-      assert.ok(range>=(long?74:34),'each varied tunnel has a real dip or climb');
+      assert.equal(chunk.corePipes.length,long?10:4,'ordinary winding passages are four pairs; only rare variants are long');
+      assert.ok(Math.abs(bank.at(-1).x-bank[0].x+52-(long?492:217))<1e-7,'ordinary tunnel footprint is shortened');
+      assert.ok(range>=(long?90:20),'long routes have a pronounced dip/climb; short ones retain small steps');
       assert.ok(ys.some((y,i)=>i&&y>ys[i-1])&&ys.some((y,i)=>i&&y<ys[i-1]),'each route changes direction, rather than drifting in a straight line');
       const changes=ys.slice(1).map((y,i)=>Math.abs(y-ys[i]));
-      assert.ok(Math.max(...changes)>=28,'routes include a pronounced drop or climb');
+      assert.ok(Math.max(...changes)>=(long?44:14),'large chutes are reserved for the rare long variant');
       assert.ok(Math.min(...changes)<17,'larger turns are broken up by small uneven changes');
-      for(const change of changes)assert.ok(change<=40,'larger bends retain enough shared aperture for a full-sized bird');
+      for(const change of changes)assert.ok(change<=(long?60:40),'a staggered ceiling leaves room to enter the big floor ledge');
       let run=0,sign=0;
       for(let i=1;i<ys.length;i++){
-        const next=Math.sign(ys[i]-ys[i-1]);run=next===sign?run+1:1;sign=next;
+        const next=Math.sign(poses[i].bottom.y-poses[i-1].bottom.y);run=next===sign?run+1:1;sign=next;
         assert.ok(run<=3,'uneven runs break staircases before they dominate the tunnel');
       }
       for(const pose of poses)assert.ok(pose.bottom.y-pose.top.y>=108-1e-7,'height fitting retains the opening throughout the bend');
       if(long){
         const shared=Math.min(...poses.map(p=>p.bottom.y))-Math.max(...poses.map(p=>p.top.y));
         assert.ok(shared<54,'long sections do not leave a full-flap-sized straight corridor through every bend');
+        assert.equal(Math.sign(ys[5]-ys[3]),kind==='long-low-tunnel'?-1:1,
+          'the two rare variants provide opposite large ledges');
       }
       profiles.add(ys.map(y=>(y-ys[0]).toFixed(3)).join(','));
       directions.add(Math.sign(ys.find(y=>Math.abs(y-ys[0])>1)-ys[0]));
@@ -144,7 +165,7 @@ export function checkWindingTunnels(){
       assert.ok(result.ok,kind+', profile '+profile+', depth '+depth+', ground '+ground+': '+JSON.stringify(result));
     }
     assert.ok(profiles.size>=8,'shape and depth choices produce varied tunnel routes');
-    assert.equal(directions.size,2,'both dip-first and climb-first routes are available');
+    if(!long)assert.equal(directions.size,2,'short routes offer both dip-first and climb-first patterns');
   }
   // Entrance height guides must move with the section, without holding a
   // convoy still or letting faster gates collide with the guide ahead.
@@ -208,7 +229,7 @@ export function checkRoofApproach(){
       assert.ok(firstEdge-approach.endX>=3,'the release never overlaps the descending corridor');
       assert.ok(firstEdge-approach.endX<40,'the release stays short instead of leaving a chunk-sized empty gap');
     }
-    const result=flyPassage(scene,{minFlapInterval:.25,safetyMargin:3,beamWidth:128});
+    const result=flyPassage(scene,{minFlapInterval:.25,safetyMargin:3,beamWidth:256,decisionFrames:1});
     assert.ok(result.ok,'descending roof approach '+kind+', profile '+profile+', ground '+ground+', entry '+entry+': '+JSON.stringify(result));
   }
   return 'Roof approaches: guaranteed descending enclosed setup, direct low handoff, unchanged roof poses and buffered flights through every roof profile passed.';
@@ -305,9 +326,9 @@ export function checkPassages(){
       assert.ok(opening.bottom-opening.top>=70,kind+': an enclosed route must retain room for the actual bird and flight arc');
     }
     const scene=sequence(['stationary-tunnel',kind,'short-low-tunnel'],ground,entry,()=>profile);
-    // Keep more candidate input phases through the tight tunnel: a valid
-    // exit arc can rank behind the centerline-biased beam before the turn.
-    const result=flyPassage(scene,{minFlapInterval:.25,safetyMargin:5,beamWidth:128});
+    // Consider each real physics frame so a short entrance does not force
+    // its valid exit arc onto the coarser 50 ms input-decision grid.
+    const result=flyPassage(scene,{minFlapInterval:.25,safetyMargin:5,beamWidth:256,decisionFrames:1});
     assert.ok(result.ok,kind+': buffered flight through tunnel and both joins, ground '+ground+', entry '+entry+', profile '+profile+': '+JSON.stringify(result));
   }
   // Exercise every combination of horizontal velocity/height profiles, plus

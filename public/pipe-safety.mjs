@@ -7,6 +7,17 @@ export function postVertices(pipe,post,up,length){
   const a=up?-length:0,b=up?0:length,co=Math.cos(post.angle),si=Math.sin(post.angle);
   return [[-pipe.width/2,a],[pipe.width/2,a],[pipe.width/2,b],[-pipe.width/2,b]].map(([x,y])=>[pipe.x+pipe.width/2+post.x+x*co-y*si,post.y+x*si+y*co]);
 }
+export function polygonsHaveGap(a,b,margin=0){
+  if(!a.length||!b.length)return true;
+  for(const poly of [a,b])for(let i=0;i<poly.length;i++){
+    const p=poly[i],q=poly[(i+1)%poly.length],length=Math.hypot(q[0]-p[0],q[1]-p[1]);
+    if(length<1e-9)continue;
+    const nx=(q[1]-p[1])/length,ny=(p[0]-q[0])/length;
+    const av=a.map(p=>p[0]*nx+p[1]*ny),bv=b.map(p=>p[0]*nx+p[1]*ny);
+    if(Math.max(...av)+margin<=Math.min(...bv)+1e-8||Math.max(...bv)+margin<=Math.min(...av)+1e-8)return true;
+  }
+  return false;
+}
 export function clipToGround(polygon,ground){
   for(const [edge,sign] of [[0,1],[ground,-1]]){
     const clipped=[];

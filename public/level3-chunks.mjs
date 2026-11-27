@@ -126,25 +126,28 @@ function rushGates(short=false){
   return {id:short?'short-left-rush-gates':'left-rush-gates',source:short?[52,57]:[52,64],family:'rush',motif:'rush',entryInset:160,exitAtLastGate:true,clearance:24,pairs:layout(()=>.5),layout};
 }
 function windingTunnel(id,long=false,low=false){
-  // The 34–43 s passage bends through short dips and staircases. Move both
-  // walls together so the route changes elevation instead of only the roof.
-  const profiles=long?[
-    [0,-12,8,-6,30,62,78,58,68],
-    [0,14,-8,6,-30,-62,-78,-58,-68],
-    [0,32,64,52,68,38,48,14,-18],
-    [0,-30,-64,-52,-68,-38,-48,-14,18],
-  ]:[
-    [0,16,-12,24,8],[0,-16,12,-24,-8],
-    [0,32,18,48,26],[0,-32,-18,-48,-26],
-  ];
+  // The 34–43 s passage mixes brief stairs with uneven tips. Both walls
+  // change elevation, with a little independent variation in the roof.
+  const profiles=[[0,12,-8,20],[0,-12,8,-20],[0,16,32,18],[0,-16,-32,-18]];
   const layout=random=>{
     const shape=profiles[Math.min(profiles.length-1,Math.floor(random()*profiles.length))];
     const depth=.95+random()*.1,center=168+(low?6:0);
-    const pairs=shape.map((offset,i)=>{
+    // A rare long route contains a real ledge, rather than distributing the
+    // entire dip over many stairs. Its roof follows one column later so the
+    // bird can enter the chute before the low ceiling closes in.
+    const detail=i=>(i===1||i===2||i>5)?shape[i%4]*.2:0;
+    const bounded=v=>Math.max(-8,Math.min(112,v));
+    const floor=[0,-8,12,4,104,96,110,98,108].map((v,i)=>bounded(v*depth+detail(i)));
+    const roof=[0,6,-8,10,4,104,92,106,88].map((v,i)=>bounded(v*depth-detail(i)*.6));
+    const pairs=long?floor.map((offset,i)=>{
+      const bottom=low?-roof[i]:offset,top=Math.min(low?-offset:roof[i],bottom+8);
+      return pair(i*pitch,center-62+top,center+62+bottom,{minimumGap:108});
+    }):shape.map((offset,i)=>{
       const y=center+offset*depth;
       const turn=Math.max(Math.abs(offset-(shape[i-1]??offset)),Math.abs((shape[i+1]??offset)-offset))*depth;
       const gap=turn>28?124:116;
-      return pair(i*pitch,y-gap/2,y+gap/2,{minimumGap:gap});
+      const roofOffset=[0,-4,6,-6][i]*(low?-1:1);
+      return pair(i*pitch,y-gap/2+roofOffset,y+gap/2,{minimumGap:108});
     });
     if(long)pairs.push(pair(9*pitch+12,178,286,{
       top:[0,178+64,-Math.PI/4],allowRoofOverlap:true,overlayAfter:true,anchorEntry:false,safetyGroup:2,passageHeight:92,
@@ -152,7 +155,7 @@ function windingTunnel(id,long=false,low=false){
     return pairs;
   };
   return {id,source:long?[34,39]:low?[39,43]:[34,37],family:'tunnel',rare:long?'long':undefined,
-    minEntry:156,maxEntry:180,preserveRoute:true,routeSlope:.72,passageHeight:76,clearance:long?12:24,pairs:layout(()=>.5),layout};
+    minEntry:156,maxEntry:180,preserveRoute:true,routeSlope:long?1:.72,passageHeight:76,clearance:long?12:24,pairs:layout(()=>.5),layout};
 }
 function descendingPursuit(){
   // 32–34 s: one complete gate plunges along a straight, readable rail.
@@ -173,11 +176,10 @@ function tunnelPlunger(){
   moving.motion={type:'plunger',from:-64,to:64,speed:210,start:(moving.dx-38)/118,returnSpeed:210,slowAt:(moving.dx+14)/118,afterSpeed:60};
   return chunk;
 }
-export const LEVEL3_OPENING_CHUNK=vertical('opening-moving-pair',[6,10],[168,144,202],124,156);
+export const LEVEL3_OPENING_CHUNK=vertical('opening-tunnel',[6,10],[168,176,168],116,pitch);
 LEVEL3_OPENING_CHUNK.family='opening';
-LEVEL3_OPENING_CHUNK.pairs[0].motion=rail(-50,60,50,-1);
 export const LEVEL3_CHUNKS=[
-  vertical('stationary-tunnel',[12,14.7],[168,168,168,168,168],108),
+  vertical('stationary-tunnel',[12,14.7],[168,168,168],108),
   rising('rising-trio'),rising('rising-trio-window',true),
   roofApproach(),
   descendingPursuit(),
@@ -186,8 +188,8 @@ export const LEVEL3_CHUNKS=[
   bank('diagonal-fall',{continuation:true}),
   bank('displaced-roof-bank'),
   diagonalTunnel(),diagonalTunnel(true),diagonalTunnel(false,true),
-  vertical('short-high-tunnel',[34,36.5],[168,154,144,154],112),
-  vertical('short-low-tunnel',[36.5,39],[168,182,192,182],112),
+  vertical('short-high-tunnel',[34,36.5],[168,154,144],112),
+  vertical('short-low-tunnel',[36.5,39],[168,182,192],112),
   windingTunnel('stepped-roof-tunnel'),windingTunnel('floor-valley-tunnel',false,true),
   rushGates(),
   rushGates(true),

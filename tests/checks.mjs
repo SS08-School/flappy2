@@ -5,6 +5,20 @@ import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
 import { createApp } from '../server.mjs';
 import { ASSET_FILES, SPRITES } from '../public/assets.mjs';
 import { SOUND_FILES } from '../public/audio.mjs';
+export function checkClassicVariety(){
+  let state=194,random=()=>((state=(Math.imul(state,1664525)+1013904223)>>>0)/4294967296);
+  const game=new Game({random}),values=[];
+  for(let i=0;i<500;i++){game.spawnPipe(i*156);values.push(game.pipes.at(-1).center);}
+  assert.ok(Math.min(...values)>=100&&Math.max(...values)<=236);
+  assert.ok(Math.max(...values)-Math.min(...values)>125,'classic openings cover the original height range');
+  assert.ok(new Set(values.map(y=>y.toFixed(4))).size>480,'classic heights remain continuous, not a few preset elevations');
+  const bins=Array(6).fill(0);for(const y of values)bins[Math.min(5,Math.floor((y-100)/136*6))]++;
+  assert.ok(bins.every(n=>n>35),'all parts of the available height range appear');
+  const draws=[.1,.9,.1,.5],repeat=new Game({random:()=>draws.shift()??.5});
+  repeat.spawnPipe(0);repeat.spawnPipe(156);repeat.spawnPipe(312);
+  assert.ok(Math.abs(repeat.pipes[2].center-repeat.pipes[0].center)>=16,'an alternating repeat is resampled');
+  return 'Classic pipes: continuous heights cover the full original range, with near-repeat/alternation rejection and no fixed two-height cycle.';
+}
 
 export function checkEngine() {
   const events = [], game = new Game({ random: () => .5, onEvent: (type, data) => events.push({ type, data }) });

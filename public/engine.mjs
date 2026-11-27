@@ -27,6 +27,7 @@ export class Game {
     this.nextPipeAt = 0;
     this.difficulty = 1; this.chunkSerial = 0; this.lastChunkKind = null;
     this.classicSpawned = 0; this.level3Queued = false; this.nextChunkX = null;
+    this.classicCenters = [];
     this.lastExitCenter = null; this.lastExitPort = null;
     this.level3Director = null;
   }
@@ -55,7 +56,12 @@ export class Game {
   }
   spawnPipe(x) {
     const margin = 50;
-    const center = margin + PHYSICS.gap / 2 + this.random() * (this.ground - margin * 2 - PHYSICS.gap);
+    let center;
+    for(let attempt=0;attempt<8;attempt++){
+      center = margin + PHYSICS.gap / 2 + this.random() * (this.ground - margin * 2 - PHYSICS.gap);
+      if(this.classicCenters.every(y=>Math.abs(y-center)>=16))break;
+    }
+    this.classicCenters.push(center);if(this.classicCenters.length>2)this.classicCenters.shift();
     this.pipes.push({ x, center, gap: PHYSICS.gap, width: METRICS.pipeWidth, scored: false, level: 1 });
     this.classicSpawned++;
   }
@@ -63,24 +69,16 @@ export class Game {
     const last = this.pipes.at(-1);
     const id = this.chunkSerial++;
     this.level3Director ||= new Level3Director(this.random);
+    let entryCenter=this.lastExitCenter ?? last?.center ?? this.ground/2;
+    if(id===0&&last?.level===1)entryCenter=last.center+(last.center<this.ground/2?40:-40);
     const chunk = createLevel3Chunk({
       x: this.nextChunkX ?? Math.max(this.pipeStartX, last ? last.x + PHYSICS.spacing + 16 : this.pipeStartX),
-      ground: this.ground, entryCenter: this.lastExitCenter ?? last?.center ?? this.ground / 2,
+      ground: this.ground, entryCenter,
       entryPort: this.lastExitPort,
       previousKind: this.lastChunkKind, id, random: this.random, width: METRICS.pipeWidth,
       kind: this.level3Director.next(id),
       referenceBirdX: this.bird.x,
     });
-    if(id===0&&last?.level===1){
-      // Ceiling/ground fitting limits the rail's neutral height. Choose its
-      // arrival phase after that fitting, so the last classic gate cannot
-      // leave an almost-level, slightly misaligned opening into level 3.
-      const first=chunk.pipes[0],neutral=pipePose({...first,motion:undefined}).center;
-      const target=last.center+(last.center<neutral?48:-48),motion=first.motion;
-      const offset=Math.max(motion.from+10,Math.min(motion.to-10,target-neutral));
-      first.motion={...motion,start:-(offset-motion.from)/motion.speed};
-      Object.assign(first,pipePose(first));
-    }
     this.pipes.push(...chunk.pipes); this.lastChunkKind = chunk.kind;
     this.nextChunkX = chunk.nextX;
     this.lastExitCenter = chunk.exitCenter;

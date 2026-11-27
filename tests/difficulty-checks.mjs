@@ -77,7 +77,11 @@ export function checkDifficulty(){
     game.bird.y=168;game.bird.vy=0;game.update(PHYSICS.step);
     if(game.level3Queued&&!firstLevel3){
       assert.ok(game.score<5);lastClassic=game.pipes.filter(p=>p.level===1).at(-1);firstLevel3=game.pipes.find(p=>p.level===3);
-      assert.equal(firstLevel3.kind,LEVEL3_OPENING_ID);assert.ok(firstLevel3.motion);
+      assert.equal(firstLevel3.kind,LEVEL3_OPENING_ID);assert.equal(firstLevel3.motion,undefined);
+      const opener=game.pipes.filter(p=>p.chunkId===0);
+      assert.equal(opener.length,3,'stage 3 always starts with exactly three upright tunnel pairs');
+      assert.ok(opener.every(p=>p.topRecord[2]===0&&p.bottomRecord[2]===0&&!p.motion));
+      assert.equal(opener[1].x-opener[0].x,55);assert.equal(opener[2].x-opener[1].x,55);
       assert.equal(game.classicSpawned,5);
       assert.ok(Math.abs(firstLevel3.x-lastClassic.x-172)<1e-8,'short deliberate release at the level switch');
       const opening=pipePose({...firstLevel3,referenceBirdX:firstLevel3.x+26});
@@ -142,7 +146,7 @@ export function checkDifficulty(){
   }
   assert.equal(rapid.length,0,'rapid reversing formations are disabled');
   assert.ok(descents.length>=2,'fast downward passage remains available in random runs');
-  assert.ok(long.length>=6&&long.length<=12);
+  assert.ok(long.length>=12&&long.length<=17,'long variants occur roughly every eight chunks');
   let precededRushes=0,plainRushes=0;const roofSeen=new Set();
   for(let seed=1;seed<=20;seed++){
     const director=new Level3Director(seeded(seed));let sections=0,lastRush=-Infinity,lastRoof=-Infinity,previous;
@@ -168,14 +172,15 @@ export function checkDifficulty(){
   for(const kind of ['long-dropping-tunnel','long-low-tunnel']){
     const tunnel=chunkOfKind(kind);
     assert.equal(tunnel.pipes.length,10);assert.ok(tunnel.pipes.at(-1).allowRoofOverlap);
-    assert.ok(tunnel.exitCenter>tunnel.safePath[1][1]+35,'long tunnel ends through a lower opening');
+    const floors=tunnel.corePipes.slice(0,9).map(p=>pipePose(p).bottom.y);
+    assert.ok(Math.max(...floors.slice(1).map((y,i)=>Math.abs(y-floors[i])))>=90,'long variants contain a single large floor ledge, in either direction');
   }
-  const flat=chunkOfKind('stationary-tunnel');assert.equal(flat.pipes.length,5);
-  assert.equal(flat.pipes.at(-1).x-flat.pipes[0].x+52,272,'five columns with small visible gaps, not a concatenated tunnel');
+  const flat=chunkOfKind('stationary-tunnel');assert.equal(flat.pipes.length,3);
+  assert.equal(flat.pipes.at(-1).x-flat.pipes[0].x+52,162,'three columns make the ordinary flat tunnel brief');
   for(const p of flat.pipes){assert.equal(p.motion,undefined);assert.deepEqual(atTime(p,0),atTime(p,20));}
   for(const entryCenter of [100,168,236]){
     const opening=chunkOfKind(LEVEL3_OPENING_ID,{entryCenter});
-    assert.ok(Math.abs(pipePose(opening.pipes[1]).center-pipePose(opening.pipes[2]).center)>=16,'opening static pairs always have distinct elevations');
+    assert.equal(opening.pipes.length,3);assert.ok(opening.pipes.every(p=>!p.motion&&p.topRecord[2]===0),'stage 3 begins with a short upright tunnel');
   }
   const rising=chunkOfKind('rising-trio');assert.equal(rising.pipes.length,6);
   const initial=rising.pipes.slice(0,3).map(p=>atTime(p,0)),later=rising.pipes.slice(0,3).map(p=>atTime(p,1));

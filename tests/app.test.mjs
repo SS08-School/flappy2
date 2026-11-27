@@ -1,13 +1,15 @@
 import test from 'node:test';
-import { checkEngine, checkServer, checkAssets, checkPipeTiming } from './checks.mjs';
+import { checkEngine, checkServer, checkAssets, checkPipeTiming, checkClassicVariety } from './checks.mjs';
 import { checkClient, checkGroundLoop, checkPipeAnchoring, checkBirdAnimation, checkRefreshRates, checkPipeSampling, checkInputLatency, checkResponsiveClient, checkDeviceInvariantGameplay, checkPreciseInputTiming } from './client-checks.mjs';
 import { checkPresentation, checkBirdVariants, checkNewBestPlacement, checkDeathContinuity } from './presentation-checks.mjs';
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 import { checkScoreDigits } from './score-checks.mjs';
 import { checkBackgroundJoins } from './background-checks.mjs';
 import { checkDifficulty, checkLevel3Client, checkFloorVisibility, checkStationaryBankAlignment, checkLiveChunkQueue } from './difficulty-checks.mjs';
-import { checkPassages, checkChunkContinuity, checkWindingTunnels, checkRoofApproach } from './passage-checks.mjs';
+import { checkPassages, checkChunkContinuity, checkWindingTunnels, checkRoofApproach, checkOverlayTips } from './passage-checks.mjs';
 test('original game rules and widescreen geometry', checkEngine);
+test('continuous random classic heights without alternating repeats', checkClassicVariety);
+test('foreground diagonal overlays leave pipe tips uncovered', checkOverlayTips);
 test('static game server', checkServer);
 test('uploaded official sprite sheet only', checkAssets);
 test('original game client flow', () => checkClient());
