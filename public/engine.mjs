@@ -4,7 +4,7 @@ export const METRICS = { width: 288, height: 384, maxAspectRatio: 16 / 10, groun
 const birdX = width => 90 + (width - METRICS.width) * .3;
 const maxWorldWidth = METRICS.height * METRICS.maxAspectRatio;
 export const PHYSICS = { speed: 120, spacing: 156, gap: 100, gravity: 1100, flap: -330, firstPipeDistance: maxWorldWidth - birdX(maxWorldWidth), step: 1 / 60 };
-export const LEVEL2_PHYSICS = { gap:108, minAmplitude:20, maxAmplitude:26, minSpeed:16, maxSpeed:22 };
+export const LEVEL2_PHYSICS = { gap:108, minAmplitude:20, maxAmplitude:26, minSpeed:20, maxSpeed:28 };
 
 export function viewportLayout(width, height) {
   const pixelsWide=Math.max(1,Math.min(width,height*METRICS.maxAspectRatio));
@@ -75,9 +75,36 @@ export class Game {
       // vertical offset moves; top and bottom retain one slightly wider gap.
       const cap=26,half=pipe.gap/2;
       const amplitude=Math.min(LEVEL2_PHYSICS.minAmplitude+this.random()*(LEVEL2_PHYSICS.maxAmplitude-LEVEL2_PHYSICS.minAmplitude),center-half-cap,this.ground-half-cap-center);
-      const speed=LEVEL2_PHYSICS.minSpeed+this.random()*(LEVEL2_PHYSICS.maxSpeed-LEVEL2_PHYSICS.minSpeed);
       pipe.baseCenter=center;
-      pipe.verticalMotion={amplitude,period:4*amplitude/speed,phase:(this.random()+(this.classicSpawned-LEVEL2_TEST_SCORE)*.37)%1,speed};
+      const previous=this.pipes.at(-1),prior=previous?.verticalMotion;
+      const encounter=this.elapsed+Math.max(0,(x-this.bird.x)/PHYSICS.speed);
+      const phaseAt=motion=>((encounter/motion.period+motion.phase)%1+1)%1;
+      const distinct=motion=>{
+        if(!prior)return true;
+        const difference=Math.abs(phaseAt(motion)-phaseAt(prior)),phaseGap=Math.min(difference,1-difference);
+        const y=center+amplitude*triangle(encounter,motion.period,motion.phase);
+        const previousY=previous.baseCenter+prior.amplitude*triangle(encounter,prior.period,prior.phase);
+        // Reject near-copies and mirrored locks, without forcing alternating
+        // directions. Same-direction travel is fine at distinct elevations.
+        return Math.abs(motion.speed-prior.speed)>=2-1e-7&&Math.abs(motion.period-prior.period)>=.2
+          &&Math.abs(phaseGap-.5)>.06&&(Math.abs(y-previousY)>=28||phaseGap>=.18);
+      };
+      const makeMotion=(speed,phase)=>({amplitude,period:4*amplitude/speed,phase,speed});
+      let motion;
+      for(let attempt=0;attempt<8;attempt++){
+        const speed=LEVEL2_PHYSICS.minSpeed+this.random()*(LEVEL2_PHYSICS.maxSpeed-LEVEL2_PHYSICS.minSpeed);
+        motion=makeMotion(speed,(this.random()+(this.classicSpawned-LEVEL2_TEST_SCORE)*.37)%1);
+        if(distinct(motion))break;
+      }
+      // Bounded fallback also keeps constant/random test sources from locking
+      // neighboring pairs together. Normal runs use the random samples above.
+      if(!distinct(motion))outer:for(const speed of [LEVEL2_PHYSICS.minSpeed,LEVEL2_PHYSICS.maxSpeed,(LEVEL2_PHYSICS.minSpeed+LEVEL2_PHYSICS.maxSpeed)/2]){
+        for(let i=0;i<20;i++){
+          const candidate=makeMotion(speed,(motion.phase+i*.2718281828)%1);
+          if(distinct(candidate)){motion=candidate;break outer;}
+        }
+      }
+      pipe.verticalMotion=motion;
       pipe.center=this.pipeCenter(pipe);
     }
     this.pipes.push(pipe);
@@ -125,7 +152,7 @@ export class Game {
   activateLevel3() {
     if (this.difficulty === 3 || this.score < LEVEL3_TEST_SCORE) return;
     this.difficulty = 3;
-    // Level 3 is already queued after five classic and two moving pairs.
+    // Level 3 is already queued after five classic and four moving pairs.
     // Switching levels changes no positions and inserts no transition gap.
     if (!this.level3Queued) { this.level3Queued = true; this.appendLevel3Chunk(); }
     this.onEvent('difficulty', { level: 3 });

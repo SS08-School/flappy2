@@ -293,6 +293,17 @@ function frame() {
     }
     const pipeX=pipePixel(pipe.x+pose.pipeOffset);
     const center=game.pipeCenter(pipe,game.state==='playing'?Math.max(0,Math.min(PHYSICS.step,game.accumulator)):0);
+    if(pipe.level===2){
+      // Move complete, fixed-size atlas crops. Resizing a fractional source
+      // rectangle every frame changed its sampling phase and made these slow
+      // vertical movements shimmer. The excess shaft stays behind the ground
+      // or above the viewport, while both caps share one device-pixel offset.
+      ctx.save();ctx.translate(pipeX,pipePixel(center-pipe.gap/2));
+      drawPipe(ctx,0,-SPRITES.pipeTop.height,pipe.width,SPRITES.pipeTop.height,true);
+      ctx.translate(0,pipe.gap);
+      drawPipe(ctx,0,0,pipe.width,SPRITES.pipeBottom.height);
+      ctx.restore();continue;
+    }
     drawPipe(ctx, pipeX, 0, pipe.width, center - pipe.gap / 2, true);
     // Hide the shaft's final pixel beneath the foreground at every scale.
     drawPipe(ctx, pipeX, center + pipe.gap / 2, pipe.width, ground - center - pipe.gap / 2 + 1);

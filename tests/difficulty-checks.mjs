@@ -62,7 +62,9 @@ export function checkLiveChunkQueue(){
       return result;
     };
     game.start();
-    for(let frame=0;frame<4500;frame++){
+    // Stage 3 starts later now that stage 2 has four pairs. Retain the same
+    // moving-section coverage by observing longer runs, not fewer handoffs.
+    for(let frame=0;frame<5400;frame++){
       if(frame===2000)game.resize(288,384);if(frame===2600)game.resize(614.4,384);
       const staticPosts=game.pipes.filter(p=>p.level===3&&!p.motion&&!p.topMotion&&!p.bottomMotion)
         .map(p=>[p,p.x+pipePose(p).top.x,p.x+pipePose(p).bottom.x]);
@@ -75,7 +77,7 @@ export function checkLiveChunkQueue(){
       }
     }
   }
-  assert.ok(appended>100&&rushes>8,'queue coverage includes many moving-section handoffs');
+  assert.ok(appended>100&&rushes>8,`queue coverage includes many moving-section handoffs (${appended} chunks, ${rushes} rushes)`);
   return 'Live queue: scrolling and rotation preserve outgoing bounds; prefetch adds every pipe offscreen without moving existing geometry.';
 }
 export function checkStationaryBankAlignment(){
@@ -110,20 +112,20 @@ export function checkStationaryBankAlignment(){
   return 'Stationary banks: flat tips stay level and intentional roof/floor shapes survive fitting near the ground and ceiling at every supported entry height.';
 }
 export function checkDifficulty(){
-  assert.equal(LEVEL2_TEST_SCORE,5);assert.equal(LEVEL2_TEST_LENGTH,2);assert.equal(LEVEL3_TEST_SCORE,7);assert.equal(LEVEL3_PIPE_SPEED,118);
+  assert.equal(LEVEL2_TEST_SCORE,5);assert.equal(LEVEL2_TEST_LENGTH,4);assert.equal(LEVEL3_TEST_SCORE,9);assert.equal(LEVEL3_PIPE_SPEED,118);
   const events=[],game=new Game({width:614.4,height:384,random:()=>.5,onEvent:(type,data)=>events.push({type,data})});
   game.start();assert.equal(game.difficulty,1);assert.equal(game.speed,120);
   let lastClassic,firstLevel3;
-  for(let i=0;i<720;i++){
+  for(let i=0;i<1800&&game.score<LEVEL3_TEST_SCORE;i++){
     game.bird.y=168;game.bird.vy=0;game.update(PHYSICS.step);
     if(game.level3Queued&&!firstLevel3){
-      assert.ok(game.score<7);lastClassic=game.pipes.filter(p=>p.level===2).at(-1);firstLevel3=game.pipes.find(p=>p.level===3);
+      assert.ok(game.score<LEVEL3_TEST_SCORE);lastClassic=game.pipes.filter(p=>p.level===2).at(-1);firstLevel3=game.pipes.find(p=>p.level===3);
       assert.equal(firstLevel3.kind,LEVEL3_OPENING_ID);assert.equal(firstLevel3.motion,undefined);
       const opener=game.pipes.filter(p=>p.chunkId===0);
       assert.equal(opener.length,3,'stage 3 always starts with exactly three upright tunnel pairs');
       assert.ok(opener.every(p=>p.topRecord[2]===0&&p.bottomRecord[2]===0&&!p.motion));
       assert.equal(opener[1].x-opener[0].x,55);assert.equal(opener[2].x-opener[1].x,55);
-      assert.equal(game.classicSpawned,7);
+      assert.equal(game.classicSpawned,LEVEL3_TEST_SCORE);
       assert.ok(Math.abs(firstLevel3.x-lastClassic.x-172)<1e-8,'short deliberate release at the level switch');
       const opening=pipePose({...firstLevel3,referenceBirdX:firstLevel3.x+26});
       const crossing=(lastClassic.x+lastClassic.width/4-game.bird.x)/PHYSICS.speed;
@@ -132,7 +134,7 @@ export function checkDifficulty(){
     }
     if(firstLevel3)assert.ok(Math.abs(firstLevel3.x-lastClassic.x-172)<1e-7);
   }
-  assert.equal(game.score,7);assert.equal(game.difficulty,3);assert.equal(game.speed,118);
+  assert.equal(game.score,LEVEL3_TEST_SCORE);assert.equal(game.difficulty,3);assert.equal(game.speed,118);
   assert.deepEqual(events.filter(e=>e.type==='difficulty').map(e=>e.data.level),[2,3]);
   for(const value of [0,.1,.25,.5,.75,.9,1])for(const width of [240,288,614.4]){
     const run=new Game({width,random:()=>value});run.spawnPipe(run.pipeStartX);run.appendLevel3Chunk();

@@ -1,7 +1,7 @@
 import { LEVEL3_REFERENCE, LEVEL3_CHUNKS, LEVEL3_OPENING_CHUNK, ROOF_APPROACH_ID } from './level3-chunks.mjs';
 import { fitPassage, postVertices, clipToGround, pathHeight, slabRange, polygonsHaveGap } from './pipe-safety.mjs';
 export const LEVEL2_TEST_SCORE=5;
-export const LEVEL2_TEST_LENGTH=2;
+export const LEVEL2_TEST_LENGTH=4;
 export const LEVEL3_TEST_SCORE=LEVEL2_TEST_SCORE+LEVEL2_TEST_LENGTH;
 export const LEVEL3_PIPE_SPEED=LEVEL3_REFERENCE.speed;
 export const LEVEL3_CHUNK_KINDS=LEVEL3_CHUNKS.map(chunk=>chunk.id);
