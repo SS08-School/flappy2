@@ -7,6 +7,9 @@ const seeded=seed=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/42949672
 
 export function checkLevel2Progression(){
   const changes=[],game=new Game({width:614.4,random:()=>.5,onEvent(type,data){if(type==='difficulty')changes.push([data.level,game.score]);}});
+  // Isolate queue/progression here; the separate flight search checks real
+  // input sequences through moving openings instead of holding y=168.
+  game.hit=()=>{};
   game.start();const seen=new Set(game.pipes),spawned=[...game.pipes];
   const origins=new Map(game.pipes.map(p=>[p,p.x+game.distance]));
   assert.ok(game.pipes[0].x>=game.width-1e-8,'first pair starts offscreen');
@@ -20,7 +23,7 @@ export function checkLevel2Progression(){
     const expected=game.score<LEVEL2_TEST_SCORE?1:game.score<LEVEL3_TEST_SCORE?2:3;
     assert.equal(game.difficulty,expected,'score 5 starts stage 2; score 9 starts stage 3');
     if(expected===2)assert.equal(game.speed,PHYSICS.speed,'stage 2 keeps stage 1 horizontal speed');
-    assert.equal(game.state,'playing','the default moving pair path remains playable');
+    assert.equal(game.state,'playing','queue observation stays active');
   }
   assert.deepEqual(spawned.slice(0,9).map(p=>p.level),[1,1,1,1,1,2,2,2,2]);
   assert.equal(spawned.filter(p=>p.level===2).length,LEVEL2_TEST_LENGTH);
@@ -35,12 +38,13 @@ export function checkLevel2Progression(){
 export function checkLevel2Motion(){
   for(const random of [()=>0,()=>1,seeded(153)]){
     const game=new Game({random});game.classicSpawned=5;
-    for(let i=0;i<16;i++)game.spawnPipe(i*156,2);
+    for(let i=0;i<LEVEL2_TEST_LENGTH;i++)game.spawnPipe(i*156,2);
     for(const pipe of game.pipes){
-      assert.ok(pipe.baseCenter>=100&&pipe.baseCenter<=236,'stage 2 uses the original random base-height range');
+      assert.equal(pipe.baseCenter,168,'every pair uses the same full vertical rail');
       assert.equal(pipe.gap,108);assert.equal(pipe.width,52);
       const motion=pipe.verticalMotion;let last,up=false,down=false;
-      assert.ok(motion.speed>=20&&motion.speed<=28,'motion is moderately faster and remains gentle');
+      assert.equal(motion.speed,36,'every pair uses the same faster constant speed');
+      assert.equal(pipe.baseCenter-motion.amplitude,100);assert.equal(pipe.baseCenter+motion.amplitude,236);
       for(let time=0;time<motion.period*2;time+=.013){
         const center=game.pipeCenter(pipe,time);
         assert.ok(center-pipe.gap/2>=26-1e-7&&center+pipe.gap/2<=game.ground-26+1e-7,'complete pipe caps remain above ground and below the ceiling');
@@ -78,16 +82,22 @@ export function checkLevel2Motion(){
 
 export function checkLevel2Variety(){
   let sameDirection=0,oppositeDirection=0,unevenSameDirection=0;
-  const speeds=new Set(),patterns=new Set();
+  const phases=new Set(),patterns=new Set();
   for(let seed=1;seed<=150;seed++){
     const game=new Game({random:seeded(seed*173)});game.classicSpawned=5;
     for(let i=0;i<4;i++)game.spawnPipe(game.bird.x+PHYSICS.firstPipeDistance+i*PHYSICS.spacing,2);
     const pattern=[];
     for(let i=1;i<4;i++){
       const a=game.pipes[i-1],b=game.pipes[i],time=(b.x-game.bird.x)/PHYSICS.speed;
-      speeds.add(b.verticalMotion.speed.toFixed(5));
-      assert.ok(Math.abs(a.verticalMotion.speed-b.verticalMotion.speed)>=2-1e-7,'neighboring pairs do not share near-identical vertical speeds');
-      assert.ok(Math.abs(a.verticalMotion.period-b.verticalMotion.period)>=.2,'different cycle lengths prevent persistent synchronized or mirrored motion');
+      phases.add(b.verticalMotion.phase.toFixed(5));
+      assert.equal(a.verticalMotion.speed,b.verticalMotion.speed,'speed is shared across all sets');
+      assert.equal(a.verticalMotion.amplitude,b.verticalMotion.amplitude,'vertical range is shared across all sets');
+      const delta=Math.abs(a.verticalMotion.phase-b.verticalMotion.phase),gap=Math.min(delta,1-delta);
+      assert.ok(gap>=.17&&gap<=.4,'neighboring pairs neither closely follow nor exactly mirror one another');
+      for(let j=0;j<i;j++){
+        const delta=Math.abs(game.pipes[j].verticalMotion.phase-b.verticalMotion.phase),gap=Math.min(delta,1-delta);
+        assert.ok(gap>=.055&&Math.abs(gap-.5)>=.055,'all four sets have staggered upper and lower reversals');
+      }
       const ya=game.pipeCenter(a,time),yb=game.pipeCenter(b,time);
       const da=Math.sign(game.pipeCenter(a,time+.001)-ya),db=Math.sign(game.pipeCenter(b,time+.001)-yb);
       pattern.push(da===db?'same':'opposite');
@@ -95,11 +105,61 @@ export function checkLevel2Variety(){
     }
     patterns.add(pattern.join(','));
   }
-  assert.ok(speeds.size>400,'speeds are continuously random rather than a few presets');
+  assert.ok(phases.size>400,'starting positions and directions are continuously random rather than a few presets');
   assert.ok(sameDirection>50&&oppositeDirection>50,'both same-direction and opposite-direction neighbors occur');
   assert.ok(unevenSameDirection>30,'same-direction pairs can occupy visibly different heights');
   assert.ok(patterns.size>=7,'neighboring directions do not follow a fixed alternating pattern');
-  return 'Stage 2 variety: 150 seeded four-pair sections use independent continuous speeds and cycle lengths, with mixed directions and distinct-height same-direction passages.';
+  return 'Stage 2 variety: 150 seeded sections share one speed and height range, with randomized positions/directions, staggered reversals and mixed neighbor patterns.';
+}
+
+export function checkLevel2Flights(){
+  let flown=0;
+  for(let seed=1;seed<=16;seed++)for(const initialY of [120,168,216]){
+    const game=new Game({width:614.4,random:seeded(seed*193)});
+    game.start();game.pipes=[];game.score=5;game.difficulty=2;game.classicSpawned=5;game.nextPipeAt=Infinity;
+    game.bird.y=initialY;game.bird.vy=0;
+    for(let i=0;i<4;i++)game.spawnPipe(game.bird.x+180+i*PHYSICS.spacing,2);
+    const dt=PHYSICS.step,frames=Math.ceil((180+3*PHYSICS.spacing+52+16)/(PHYSICS.speed*dt)),limits=[],targets=[];
+    for(let frame=0;frame<=frames+2;frame++){
+      const t=frame*dt;let top=16,bottom=game.ground-16;
+      for(const pipe of game.pipes){
+        const x=pipe.x-PHYSICS.speed*t;
+        if(game.bird.x+16>x&&game.bird.x-16<x+pipe.width){
+          const center=game.pipeCenter(pipe,t);
+          top=Math.max(top,center-pipe.gap/2+16);bottom=Math.min(bottom,center+pipe.gap/2-16);
+        }
+      }
+      limits.push([top,bottom]);
+      const next=game.pipes.find(p=>p.x-PHYSICS.speed*t+p.width>=game.bird.x-16);
+      const arrival=next?Math.max(t,(next.x+next.width/2-game.bird.x)/PHYSICS.speed):t;
+      targets.push(next?game.pipeCenter(next,arrival):168);
+    }
+    let beam=[{y:initialY,vy:0,age:30,inputs:[]}];
+    for(let frame=0;frame<frames;frame+=2){
+      const candidates=new Map(),steps=Math.min(2,frames-frame),target=targets[frame+steps];
+      for(const state of beam)for(const flap of [false,true]){
+        if(flap&&state.age<12)continue; // At least 200 ms between real flaps.
+        let y=state.y,vy=flap?PHYSICS.flap:state.vy,valid=true;
+        for(let step=1;step<=steps;step++){
+          y+=vy*dt+PHYSICS.gravity*dt*dt;vy+=PHYSICS.gravity*dt;
+          const [top,bottom]=limits[frame+step];if(y<top||y>bottom){valid=false;break;}
+        }
+        if(!valid)continue;
+        const age=flap?steps:state.age+steps,cost=(y-target)**2+vy*vy*.006;
+        const key=[Math.round(y/2),Math.round(vy/25),Math.min(age,12)].join(':');
+        if(!candidates.has(key)||cost<candidates.get(key).cost)candidates.set(key,{y,vy,age,cost,inputs:flap?[...state.inputs,frame]:state.inputs});
+      }
+      beam=[...candidates.values()].sort((a,b)=>a.cost-b.cost).slice(0,256);
+      assert.ok(beam.length,`stage 2 has a buffered vertical-only flight (seed ${seed}, entry ${initialY}, frame ${frame})`);
+    }
+    const inputs=new Set(beam[0].inputs);
+    for(let frame=0;frame<frames;frame++){
+      if(inputs.has(frame))game.flap();game.update(dt);
+      assert.equal(game.state,'playing','searched flap inputs also clear the real engine collisions');
+    }
+    assert.equal(game.score,9,'all four moving sets are cleared');flown++;
+  }
+  return `Stage 2 flights: ${flown} seeded sections cleared from three entry heights using original physics, at least 200 ms between flaps and four pixels of extra clearance.`;
 }
 
 export async function checkLevel2Rendering(){
@@ -108,7 +168,9 @@ export async function checkLevel2Rendering(){
     c.controller.prepareRun();c.controller.flap();game.score=5;game.activateDifficulty();game.pipes=[];game.classicSpawned=5;game.nextPipeAt=Infinity;
     game.spawnPipe(200,2);const pipe=game.pipes[0],tops=[];
     for(let frame=0;frame<64;frame++){
-      game.bird.y=168;game.bird.vy=0;c.tick(1/240);
+      // Isolate raster movement from the bird hitting a newly full-range gate.
+      // Actual flap-controlled passage is covered by checkLevel2Flights.
+      game.bird.y=game.pipeCenter(pipe);game.bird.vy=0;c.tick(1/240);
       const images=c.elements.get('game').context.commands.filter(q=>q.kind==='image'&&q.args[2]===52);
       const top=images.find(q=>q.args[0]===112),bottom=images.find(q=>q.args[0]===168);
       const factor=top.matrix[0],topY=top.matrix[5]/factor+top.args[5]+top.args[7],bottomY=bottom.matrix[5]/factor+bottom.args[5];

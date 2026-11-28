@@ -4,7 +4,7 @@ export const METRICS = { width: 288, height: 384, maxAspectRatio: 16 / 10, groun
 const birdX = width => 90 + (width - METRICS.width) * .3;
 const maxWorldWidth = METRICS.height * METRICS.maxAspectRatio;
 export const PHYSICS = { speed: 120, spacing: 156, gap: 100, gravity: 1100, flap: -330, firstPipeDistance: maxWorldWidth - birdX(maxWorldWidth), step: 1 / 60 };
-export const LEVEL2_PHYSICS = { gap:108, minAmplitude:20, maxAmplitude:26, minSpeed:20, maxSpeed:28 };
+export const LEVEL2_PHYSICS = { gap:108, minCenter:100, maxCenter:236, speed:36 };
 
 export function viewportLayout(width, height) {
   const pixelsWide=Math.max(1,Math.min(width,height*METRICS.maxAspectRatio));
@@ -63,48 +63,43 @@ export class Game {
   }
   spawnPipe(x, level = 1) {
     const margin = 50;
-    let center;
-    for(let attempt=0;attempt<8;attempt++){
+    let center=level===2?(LEVEL2_PHYSICS.minCenter+LEVEL2_PHYSICS.maxCenter)/2:undefined;
+    for(let attempt=0;level!==2&&attempt<8;attempt++){
       center = margin + PHYSICS.gap / 2 + this.random() * (this.ground - margin * 2 - PHYSICS.gap);
       if(this.classicCenters.every(y=>Math.abs(y-center)>=16))break;
     }
     this.classicCenters.push(center);if(this.classicCenters.length>2)this.classicCenters.shift();
     const pipe={ x, center, gap:level===2?LEVEL2_PHYSICS.gap:PHYSICS.gap, width: METRICS.pipeWidth, scored: false, level };
     if(level===2){
-      // Keep the original random base-height distribution. Only the pair's
-      // vertical offset moves; top and bottom retain one slightly wider gap.
-      const cap=26,half=pipe.gap/2;
-      const amplitude=Math.min(LEVEL2_PHYSICS.minAmplitude+this.random()*(LEVEL2_PHYSICS.maxAmplitude-LEVEL2_PHYSICS.minAmplitude),center-half-cap,this.ground-half-cap-center);
+      // All pairs traverse the same full rail at the same constant speed.
+      // Their independent phase chooses both initial height and direction.
+      const amplitude=(LEVEL2_PHYSICS.maxCenter-LEVEL2_PHYSICS.minCenter)/2;
       pipe.baseCenter=center;
-      const previous=this.pipes.at(-1),prior=previous?.verticalMotion;
-      const encounter=this.elapsed+Math.max(0,(x-this.bird.x)/PHYSICS.speed);
-      const phaseAt=motion=>((encounter/motion.period+motion.phase)%1+1)%1;
-      const distinct=motion=>{
-        if(!prior)return true;
-        const difference=Math.abs(phaseAt(motion)-phaseAt(prior)),phaseGap=Math.min(difference,1-difference);
-        const y=center+amplitude*triangle(encounter,motion.period,motion.phase);
-        const previousY=previous.baseCenter+prior.amplitude*triangle(encounter,prior.period,prior.phase);
-        // Reject near-copies and mirrored locks, without forcing alternating
-        // directions. Same-direction travel is fine at distinct elevations.
-        return Math.abs(motion.speed-prior.speed)>=2-1e-7&&Math.abs(motion.period-prior.period)>=.2
-          &&Math.abs(phaseGap-.5)>.06&&(Math.abs(y-previousY)>=28||phaseGap>=.18);
-      };
-      const makeMotion=(speed,phase)=>({amplitude,period:4*amplitude/speed,phase,speed});
-      let motion;
-      for(let attempt=0;attempt<8;attempt++){
-        const speed=LEVEL2_PHYSICS.minSpeed+this.random()*(LEVEL2_PHYSICS.maxSpeed-LEVEL2_PHYSICS.minSpeed);
-        motion=makeMotion(speed,(this.random()+(this.classicSpawned-LEVEL2_TEST_SCORE)*.37)%1);
-        if(distinct(motion))break;
-      }
-      // Bounded fallback also keeps constant/random test sources from locking
-      // neighboring pairs together. Normal runs use the random samples above.
-      if(!distinct(motion))outer:for(const speed of [LEVEL2_PHYSICS.minSpeed,LEVEL2_PHYSICS.maxSpeed,(LEVEL2_PHYSICS.minSpeed+LEVEL2_PHYSICS.maxSpeed)/2]){
-        for(let i=0;i<20;i++){
-          const candidate=makeMotion(speed,(motion.phase+i*.2718281828)%1);
-          if(distinct(candidate)){motion=candidate;break outer;}
+      const cohort=this.pipes.filter(p=>p.level===2),previous=cohort.at(-1);
+      const phaseGap=(a,b)=>{const d=Math.abs(a-b);return Math.min(d,1-d);};
+      const distinct=phase=>{
+        if(previous){
+          const gap=phaseGap(phase,previous.verticalMotion.phase);
+          // Allow shared directions at visibly different heights, without
+          // close following or a perfectly alternating, mirrored sequence.
+          if(gap<.17||gap>.4)return false;
         }
+        // Equal rails imply equal periods, so offset every pair's endpoint
+        // times. Neither upper nor lower reversals should happen together.
+        return cohort.every(p=>{const gap=phaseGap(phase,p.verticalMotion.phase);return gap>=.055&&Math.abs(gap-.5)>=.055;});
+      };
+      let phase;
+      for(let attempt=0;attempt<24;attempt++){
+        phase=this.random()%1;
+        if(distinct(phase))break;
       }
-      pipe.verticalMotion=motion;
+      // A bounded fallback also handles constant random test sources; normal
+      // runs keep independently sampled phases rather than fixed alternation.
+      if(!distinct(phase))for(let i=1;i<=256;i++){
+        const candidate=(phase+i/256)%1;
+        if(distinct(candidate)){phase=candidate;break;}
+      }
+      pipe.verticalMotion={amplitude,period:4*amplitude/LEVEL2_PHYSICS.speed,phase,speed:LEVEL2_PHYSICS.speed};
       pipe.center=this.pipeCenter(pipe);
     }
     this.pipes.push(pipe);

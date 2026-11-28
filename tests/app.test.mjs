@@ -8,12 +8,13 @@ import { checkBackgroundJoins } from './background-checks.mjs';
 import { checkDifficulty, checkLevel3Client, checkFloorVisibility, checkStationaryBankAlignment, checkLiveChunkQueue, checkMovingSpeedVariety } from './difficulty-checks.mjs';
 import { checkPassages, checkChunkContinuity, checkWindingTunnels, checkRoofApproach, checkOverlayTips, checkTurnWindows } from './passage-checks.mjs';
 import { checkBackgroundPrefetch } from './prefetch-checks.mjs';
-import { checkLevel2Progression,checkLevel2Motion,checkLevel2Rendering,checkLevel2Variety } from './level2-checks.mjs';
+import { checkLevel2Progression,checkLevel2Motion,checkLevel2Rendering,checkLevel2Variety,checkLevel2Flights } from './level2-checks.mjs';
 
 test('five stage 1 pairs, four stage 2 pairs, then stage 3',checkLevel2Progression);
 test('independent gentle stage 2 motion and collisions',checkLevel2Motion);
 test('smooth official-sprite stage 2 rendering',checkLevel2Rendering);
 test('stage 2 neighbors vary without uniform or mirrored cycles',checkLevel2Variety);
+test('equal-speed full-range stage 2 passages remain realistically flyable',checkLevel2Flights);
 
 test('background obstacle preparation never blocks flaps or rewinds the queue', checkBackgroundPrefetch);
 test('intentional pipe groups stay synchronized while independent neighbors vary',checkMovingSpeedVariety);

@@ -114,6 +114,7 @@ export function checkStationaryBankAlignment(){
 export function checkDifficulty(){
   assert.equal(LEVEL2_TEST_SCORE,5);assert.equal(LEVEL2_TEST_LENGTH,4);assert.equal(LEVEL3_TEST_SCORE,9);assert.equal(LEVEL3_PIPE_SPEED,118);
   const events=[],game=new Game({width:614.4,height:384,random:()=>.5,onEvent:(type,data)=>events.push({type,data})});
+  const realHit=game.hit;game.hit=()=>{};
   game.start();assert.equal(game.difficulty,1);assert.equal(game.speed,120);
   let lastClassic,firstLevel3;
   for(let i=0;i<1800&&game.score<LEVEL3_TEST_SCORE;i++){
@@ -142,6 +143,7 @@ export function checkDifficulty(){
     assert.ok(Math.abs(arrival.center-classic.center)>=30,'level transition stays deliberate across random heights and aspect ratios');
     assert.ok(Math.abs(moving.x-classic.x-172)<1e-7,'transition release is fixed in world coordinates');
   }
+  game.hit=realHit;
   const before=game.pipes.map(p=>[p.x,pipePose(p)]);game.hit();game.update(.1);
   assert.deepEqual(game.pipes.map(p=>[p.x,pipePose(p)]),before,'all motion freezes on hit');
   game.start();assert.equal(game.difficulty,1);assert.equal(game.level3Queued,false);
