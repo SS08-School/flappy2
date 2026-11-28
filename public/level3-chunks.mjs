@@ -95,15 +95,15 @@ function diagonalTunnel(drop=false,high=false){
 function rushGates(short=false){
   const layout=random=>{
     const heights=[[168,142,204],[188,130,214],[146,204,158],[198,154,112]][Math.min(3,Math.floor(random()*4))];
-    const approachMax=60+16*random();
+    const approachMax=70+6*random();
     const count=short?2+Math.min(1,Math.floor(random()*2)):3+Math.min(1,Math.floor(random()*2));
-    // Sample continuous speeds, with each regular rear gate slightly slower.
+    // Sample continuous speeds, with each regular rear gate visibly slower.
     // They retain visibly different velocities instead of all catching the
     // first slow gate and being held to its speed by the separation guard.
-    let ceiling=approachMax;
+    let speed=approachMax;
     const speeds=Array.from({length:count},(_,i)=>{
-      const floor=22+(count-i-1)*8,speed=floor+(ceiling-floor)*random();
-      ceiling=speed-6;return speed;
+      if(i)speed-=12+2*random();
+      return speed;
     });
     const ys=[...heights,heights[0]-12].slice(0,count),xs=ys.map((_,i)=>i*156);
     if(!short){ys[ys.length-1]=Math.min(154,ys.at(-1));xs.push(xs.at(-1)+176);ys.push(104);}

@@ -326,8 +326,16 @@ function connectChunk(chunk,{ground,entryCenter,entryPort,id,width,referenceBird
   // Height guides belong to the moving section too. A static guide used to
   // hold the entire convoy back after it caught up, including left of the bird.
   if(chunk.family==='rush'){
-    const speed=chunk.corePipes[0].motion.speed;
-    for(const pipe of connectors)pipe.motion={type:'rush',speed,trigger:chunk.corePipes[0].motion.trigger};
+    // These are independent approach gates, not one of the authored linked
+    // trios. Give each leading guide a modestly faster continuous speed so the
+    // first visible gates cannot form a same-speed convoy. Faster gates lead:
+    // their spacing opens rather than forcing the collision guard to lock them
+    // to one velocity. The guard remains active for the fast final follower.
+    let speed=chunk.corePipes[0].motion.speed;
+    for(let i=connectors.length-1;i>=0;i--){
+      speed+=12+2*random();
+      connectors[i].motion={type:'rush',speed,trigger:chunk.corePipes[0].motion.trigger};
+    }
     // The guides replace the old empty approach reservation; retaining both
     // would leave a conspicuous wait before the first moving gate.
     const entryInset=chunk.corePipes[0].x-chunk.startX-span;

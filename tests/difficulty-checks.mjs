@@ -14,17 +14,30 @@ export function checkMovingSpeedVariety(){
       const a=before.bottomMotion||before.motion,b=after.bottomMotion||after.motion;
       if(a&&b){
         if(linked.includes(before)&&linked.includes(after))assert.deepEqual(a,b,'intentional three-pipe groups share exactly the same motion');
-        else if(chunk.family==='rush'&&before.connector&&(after.connector||after===chunk.corePipes[0])){
-          assert.equal(a.speed,b.speed,'the moving entrance corridor travels with its first gate');
-          assert.equal(a.trigger,b.trigger);
-        }
+        else if(chunk.family==='rush'&&!a.hold&&!b.hold)
+          assert.ok(a.speed-b.speed>=12-1e-7,'independent rush gates, including entrance guides, have a visible speed difference');
         else assert.ok(Math.abs(a.speed-b.speed)>1e-6,'independent adjacent moving pipes need distinct speeds: '+kind);
       }
     }
     if(chunk.corePipes.some(p=>p.motion||p.topMotion||p.bottomMotion))for(const guide of chunk.connectors)
       assert.ok(Math.abs(pipePose(guide).bottom.y-pipePose(guide).top.y-124)<1e-7,'moving-pipe entrance guides retain exactly their original 124-pixel clearance');
+    if(chunk.family==='rush'){
+      const regular=chunk.pipes.filter(p=>p.motion?.type==='rush'&&!p.motion.hold);
+      for(const gate of regular){
+        const a=pipeMotion({...gate,referenceBirdX:gate.x+26-118}).x;
+        const b=pipeMotion({...gate,referenceBirdX:gate.x+26-118+1.18}).x;
+        assert.ok(Math.abs((a-b)/.01-gate.motion.speed)<1e-7,'entrance guides and gates keep distinct actual speeds instead of being clamped to one speed');
+      }
+      for(let t=-6;t<16;t+=.083){
+        const gates=chunk.pipes.filter(p=>p.motion?.type==='rush').map(p=>({...p,referenceBirdX:chunk.startX+26+t*118}));
+        for(let i=1;i<gates.length;i++){
+          const front=gates[i-1],rear=gates[i];
+          assert.ok(rear.x+pipeMotion(rear).x-front.x-pipeMotion(front).x-front.width>=24-1e-7,'varied entrance and gate speeds preserve physical separation throughout the section');
+        }
+      }
+    }
   }
-  return 'Moving pipes: intentional trios and entrance corridors stay synchronized, independent gates retain varied speeds, and guides have no extra headroom.';
+  return 'Moving pipes: intentional trios stay synchronized, independent gates and entrance guides retain visibly varied speeds, and guides have no extra headroom.';
 }
 export function chunkOfKind(kind,options={}){return createLevel3Chunk({x:614.4,ground:336,referenceBirdX:188,kind,...options});}
 function atTime(pipe,time){pipe.referenceBirdX=pipe.x-pipe.chunkOffset+26+time*LEVEL3_PIPE_SPEED;return pipePose(pipe);}
@@ -383,7 +396,7 @@ export function checkDifficulty(){
     regular.forEach((p,i)=>{
       assert.ok(p.motion.speed>=22&&p.motion.speed<=76,'ordinary rush speed is sampled from a bounded continuous range');
       regularSpeeds.add(p.motion.speed.toFixed(3));
-      if(i)assert.ok(regular[i-1].motion.speed-p.motion.speed>=6-1e-7,'regular approaches have distinct velocities instead of forming a same-speed convoy');
+      if(i)assert.ok(regular[i-1].motion.speed-p.motion.speed>=12-1e-7,'regular approaches have visibly distinct velocities instead of forming a same-speed convoy');
       const a=pipeMotion({...p,referenceBirdX:p.x+26-118}).x,b=pipeMotion({...p,referenceBirdX:p.x+26-118+1.18}).x;
       assert.ok(Math.abs((a-b)/.01-p.motion.speed)<1e-7,'rendered approach retains its distinct speed with the separation guard active');
     });

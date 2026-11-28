@@ -8,7 +8,9 @@ import { pipePose, pipeShaftLength, pipeBounds } from './difficulty.mjs';
 import { createChunkPrefetch } from './chunk-prefetch.mjs';
 
 const $ = id => document.getElementById(id);
-const canvas = $('game'), ctx = canvas.getContext('2d'), ui = $('game-ui');
+// Let supporting browsers present the game canvas without an extra compositor
+// queue, including after its surface is recreated by a fullscreen resize.
+const canvas = $('game'), ctx = canvas.getContext('2d', { desynchronized: true }), ui = $('game-ui');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let screen = 'home', loaded = false, view, night = false, pageFocused = document.hasFocus?.() ?? true;
 const suspended = () => document.hidden || !pageFocused;
@@ -96,6 +98,11 @@ function resize() {
   ui.style.setProperty('--rate-x', `${(game.width - METRICS.width) / 2 + 107}px`);
   ui.style.setProperty('--rate-y', `${(game.height - METRICS.height) / 2 + 207}px`);
   paintControls();
+  // Fullscreen/F11 and monitor changes can stall callbacks while the browser
+  // replaces the canvas surface. Neither that stall nor the old frame deadline
+  // should carry into the first input on the resized surface.
+  if (!document.hidden) pageFocused = document.hasFocus?.() ?? pageFocused;
+  resetFrameTiming();
 }
 new ResizeObserver(resize).observe($('game-frame'));
 resize();
@@ -147,6 +154,9 @@ function recoverInputFocus() {
     pageFocused = true; previous = performance.now(); nextFrameAt = previous;
   }
 }
+function resetFrameTiming() {
+  previous = performance.now(); nextFrameAt = previous + RENDER_INTERVAL;
+}
 $('play-button').addEventListener('click', prepareRun);
 document.addEventListener('pointerdown', event => {
   if (event.button !== 0 || (event.target.closest('button')&&screen!=='ready'&&game.state!=='playing')) return;
@@ -172,7 +182,13 @@ window.addEventListener('blur', () => {
 window.addEventListener('focus', () => {
   if(!pageFocused){pageFocused=true;previous=performance.now();nextFrameAt=previous;}
 });
-document.addEventListener('fullscreenchange', resize);
+document.addEventListener('fullscreenchange', () => {
+  resize();
+  // The fullscreen event may arrive after ResizeObserver, or without a size
+  // change at all. Also handle a focus event swallowed by the browser switch.
+  if (!document.hidden) pageFocused = document.hasFocus?.() ?? pageFocused;
+  resetFrameTiming();
+});
 window.addEventListener('orientationchange', resize);
 
 function advanceScene(dt) {

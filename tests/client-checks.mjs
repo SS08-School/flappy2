@@ -7,7 +7,7 @@ import { createChunkPrefetch } from '../public/chunk-prefetch.mjs';
 
 export async function createClient({ reducedMotion = true, width = 480, height = 640, dpr = 1, random = () => 0, coarsePointer = false, fullscreenRequest, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
   const elements = new Map(), frames = [], stored = new Map(), images = [], events = new Map(), windowEvents=new Map();
-  let rect = { width, height }, now = 0, document;
+  let rect = { width, height }, now = 0, document, focused = true;
   function makeContext() {
     let matrix = [1,0,0,1,0,0]; const stack = [], commands = [];
     return {
@@ -32,7 +32,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
       tagName:tag.toUpperCase(), hidden:/(?:^|\s)hidden(?:\s|$)/.test(attrs), events:{}, dataset:{},
       style:{ setProperty(key,value) { this[key]=value; } },
       addEventListener(type,fn) { this.events[type]=fn; },
-      getContext() { return this.context ||= makeContext(); }, getBoundingClientRect:()=>rect,
+      getContext(type,options) { this.contextOptions ||= options; return this.context ||= makeContext(); }, getBoundingClientRect:()=>rect,
       focus() { document.activeElement=this; }, setAttribute() {},
     };
     for (const [,key,value] of attrs.matchAll(/data-([\w-]+)="([^"]+)"/g)) element.dataset[key]=value;
@@ -40,6 +40,7 @@ export async function createClient({ reducedMotion = true, width = 480, height =
   }
   document = {
     documentElement:{requestFullscreen:fullscreenRequest},
+    hasFocus:()=>focused,
     activeElement:elements.get('game'), getElementById:id=>elements.get(id)||null,
     addEventListener(type,fn) { events.set(type,fn); },
     querySelectorAll:()=>[...elements.values()].filter(e=>e.dataset.sprite),
@@ -65,8 +66,12 @@ export async function createClient({ reducedMotion = true, width = 480, height =
     tick(seconds,frameLag=0) { now+=seconds*1000; frames.shift()(now-frameLag*1000); },
     elapse(seconds) { now+=seconds*1000; },
     visibility(hidden) { document.hidden=hidden; events.get('visibilitychange')(); },
-    focus(focused) { windowEvents.get(focused?'focus':'blur')(); },
+    focus(value) { focused=value;windowEvents.get(value?'focus':'blur')(); },
     resize(w,h) { rect={width:w,height:h}; controller.resize(); },
+    fullscreen(w,h,nextDpr=dpr) {
+      focused=true;rect={width:w,height:h};sandbox.devicePixelRatio=nextDpr;
+      events.get('fullscreenchange')();
+    },
   };
 }
 
@@ -353,6 +358,41 @@ export async function checkDeviceInvariantGameplay(){
   assert.ok(css.includes('user-select:none')&&css.includes('-webkit-touch-callout:none')&&css.includes('touch-action:none'));
   assert.ok(css.includes('height:min(100dvh,160dvw)')&&css.includes('width:min(100dvw,160dvh)'),'both display orientations obey the 16:10 cap');
   return 'Device invariance: seeded level 3 layouts, moving-pipe poses, collisions and live rotations match across phone and desktop views; mobile selection, scrolling and callouts are blocked.';
+}
+
+export async function checkFullscreenInputTiming() {
+  const target={closest:()=>null};
+  for(const hz of [60,144,240])for(const mode of ['fullscreen','resize'])for(const input of ['pointer','keyboard']){
+    const c=await createClient(),baseline=await createClient();
+    for(const client of [c,baseline]){client.controller.prepareRun();client.controller.flap();client.tick(.02);}
+    assert.equal(c.elements.get('game').contextOptions.desynchronized,true,'game requests low-latency canvas presentation');
+    for(let toggle=0;toggle<6;toggle++){
+      for(const client of [c,baseline]){
+        client.controller.game.bird.y=180;client.controller.game.bird.vy=200;client.controller.game.accumulator=0;
+      }
+      // A browser display-mode change can stall callbacks and return focus
+      // before dispatching focus. It must not turn into a delayed fall/flap.
+      c.elapse(.12);
+      if(mode==='fullscreen')c.focus(false);
+      const dimensions=toggle%2?[480,640]:[1920,1200];
+      if(mode==='fullscreen')c.fullscreen(...dimensions,toggle%2?1:2);
+      else c.resize(...dimensions); // F11 uses ResizeObserver, not fullscreenchange.
+      const press=client=>input==='pointer'
+        ?client.events.get('pointerdown')({button:0,target,preventDefault(){}})
+        :client.events.get('keydown')({code:'Space',repeat:false,target,preventDefault(){}});
+      press(c);press(baseline);
+      assert.equal(c.controller.game.bird.vy,PHYSICS.flap,'post-fullscreen impulse is synchronous');
+      const count=c.elements.get('game').context.renderCount;
+      c.tick(1/hz);baseline.tick(1/hz);
+      assert.equal(c.elements.get('game').context.renderCount,count+1,'first available frame after toggling displays the flap');
+      for(let frame=0;frame<8;frame++){
+        c.tick(1/hz);baseline.tick(1/hz);
+        assert.ok(Math.abs(c.controller.game.presentation().birdY-baseline.controller.game.presentation().birdY)<1e-8,'fullscreen cannot age inputs or permanently change flight timing');
+      }
+      assert.ok(Math.abs(c.controller.game.distance-baseline.controller.game.distance)<1e-8,'display-mode switch retains normal world speed');
+    }
+  }
+  return 'Fullscreen/F11: repeated entry/exit, display scale changes, focus races and stalled callbacks retain immediate input and next-frame flight at 60–240 Hz.';
 }
 
 export async function checkPreciseInputTiming() {

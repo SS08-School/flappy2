@@ -1,6 +1,6 @@
 import test from 'node:test';
 import { checkEngine, checkServer, checkAssets, checkPipeTiming, checkClassicVariety } from './checks.mjs';
-import { checkClient, checkGroundLoop, checkPipeAnchoring, checkBirdAnimation, checkRefreshRates, checkPipeSampling, checkInputLatency, checkResponsiveClient, checkDeviceInvariantGameplay, checkPreciseInputTiming } from './client-checks.mjs';
+import { checkClient, checkGroundLoop, checkPipeAnchoring, checkBirdAnimation, checkRefreshRates, checkPipeSampling, checkInputLatency, checkResponsiveClient, checkDeviceInvariantGameplay, checkPreciseInputTiming, checkFullscreenInputTiming } from './client-checks.mjs';
 import { checkPresentation, checkBirdVariants, checkNewBestPlacement, checkDeathContinuity } from './presentation-checks.mjs';
 import { checkAudio, checkGlimmer } from './audio-checks.mjs';
 import { checkScoreDigits } from './score-checks.mjs';
@@ -41,6 +41,7 @@ test('responsive game screens and live resizing', checkResponsiveClient);
 test('identical gameplay across devices and mobile rotation protections', checkDeviceInvariantGameplay);
 test('aspect-independent offscreen pipe timing', checkPipeTiming);
 test('precise input timestamps, frame stalls and refresh jitter', checkPreciseInputTiming);
+test('fullscreen and F11 retain immediate input after repeated display changes', checkFullscreenInputTiming);
 test('random level 3 difficulty chunks and collisions', checkDifficulty);
 test('live prefetch never teleports chunks or creates visible obstacles', checkLiveChunkQueue);
 test('level 3 difficulty uses only official pipe graphics', checkLevel3Client);
