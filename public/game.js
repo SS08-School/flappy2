@@ -292,9 +292,10 @@ function frame() {
       continue;
     }
     const pipeX=pipePixel(pipe.x+pose.pipeOffset);
-    drawPipe(ctx, pipeX, 0, pipe.width, pipe.center - pipe.gap / 2, true);
+    const center=game.pipeCenter(pipe,game.state==='playing'?Math.max(0,Math.min(PHYSICS.step,game.accumulator)):0);
+    drawPipe(ctx, pipeX, 0, pipe.width, center - pipe.gap / 2, true);
     // Hide the shaft's final pixel beneath the foreground at every scale.
-    drawPipe(ctx, pipeX, pipe.center + pipe.gap / 2, pipe.width, ground - pipe.center - pipe.gap / 2 + 1);
+    drawPipe(ctx, pipeX, center + pipe.gap / 2, pipe.width, ground - center - pipe.gap / 2 + 1);
   }
   for(const [pipe,post] of upperOverlays)drawLevel3Post(pipe,post,true);
   if (loaded) {

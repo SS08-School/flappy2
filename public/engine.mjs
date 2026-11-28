@@ -1,9 +1,10 @@
 // Native-pixel measurements from the supplied v1.3 gameplay reference.
-import { LEVEL3_TEST_SCORE, LEVEL3_PIPE_SPEED, Level3Director, createLevel3Chunk, pipePose, level3PipeHits, pipeBounds, pipeScoreX } from './difficulty.mjs';
+import { LEVEL2_TEST_SCORE, LEVEL3_TEST_SCORE, LEVEL3_PIPE_SPEED, Level3Director, createLevel3Chunk, pipePose, level3PipeHits, pipeBounds, pipeScoreX, triangle } from './difficulty.mjs';
 export const METRICS = { width: 288, height: 384, maxAspectRatio: 16 / 10, groundHeight: 48, birdWidth: 34, birdHeight: 24, pipeWidth: 52 };
 const birdX = width => 90 + (width - METRICS.width) * .3;
 const maxWorldWidth = METRICS.height * METRICS.maxAspectRatio;
 export const PHYSICS = { speed: 120, spacing: 156, gap: 100, gravity: 1100, flap: -330, firstPipeDistance: maxWorldWidth - birdX(maxWorldWidth), step: 1 / 60 };
+export const LEVEL2_PHYSICS = { gap:108, minAmplitude:20, maxAmplitude:26, minSpeed:16, maxSpeed:22 };
 
 export function viewportLayout(width, height) {
   const pixelsWide=Math.max(1,Math.min(width,height*METRICS.maxAspectRatio));
@@ -55,7 +56,12 @@ export class Game {
       pipeOffset: this.state === 'playing' ? -this.speed * remainder : 0,
     };
   }
-  spawnPipe(x) {
+  pipeCenter(pipe, lookahead = 0) {
+    if(pipe.level!==2)return pipe.center;
+    const motion=pipe.verticalMotion;
+    return pipe.baseCenter+motion.amplitude*triangle(this.elapsed+lookahead,motion.period,motion.phase);
+  }
+  spawnPipe(x, level = 1) {
     const margin = 50;
     let center;
     for(let attempt=0;attempt<8;attempt++){
@@ -63,7 +69,18 @@ export class Game {
       if(this.classicCenters.every(y=>Math.abs(y-center)>=16))break;
     }
     this.classicCenters.push(center);if(this.classicCenters.length>2)this.classicCenters.shift();
-    this.pipes.push({ x, center, gap: PHYSICS.gap, width: METRICS.pipeWidth, scored: false, level: 1 });
+    const pipe={ x, center, gap:level===2?LEVEL2_PHYSICS.gap:PHYSICS.gap, width: METRICS.pipeWidth, scored: false, level };
+    if(level===2){
+      // Keep the original random base-height distribution. Only the pair's
+      // vertical offset moves; top and bottom retain one slightly wider gap.
+      const cap=26,half=pipe.gap/2;
+      const amplitude=Math.min(LEVEL2_PHYSICS.minAmplitude+this.random()*(LEVEL2_PHYSICS.maxAmplitude-LEVEL2_PHYSICS.minAmplitude),center-half-cap,this.ground-half-cap-center);
+      const speed=LEVEL2_PHYSICS.minSpeed+this.random()*(LEVEL2_PHYSICS.maxSpeed-LEVEL2_PHYSICS.minSpeed);
+      pipe.baseCenter=center;
+      pipe.verticalMotion={amplitude,period:4*amplitude/speed,phase:(this.random()+(this.classicSpawned-LEVEL2_TEST_SCORE)*.37)%1,speed};
+      pipe.center=this.pipeCenter(pipe);
+    }
+    this.pipes.push(pipe);
     this.classicSpawned++;
   }
   appendLevel3Chunk() {
@@ -71,7 +88,13 @@ export class Game {
       const last=this.pipes.at(-1),id=this.chunkSerial;
       this.level3Director ||= new Level3Director(this.random);
       let entryCenter=this.lastExitCenter ?? last?.center ?? this.ground/2;
-      if(id===0&&last?.level===1)entryCenter=last.center+(last.center<this.ground/2?40:-40);
+      if(id===0&&last&&last.level!==3){
+        // Plan the handoff at the last pair's future crossing height, not its
+        // offscreen spawn height. Stage 2 keeps moving while stage 3 is queued.
+        const crossing=Math.max(0,(last.x+last.width/4-this.bird.x)/PHYSICS.speed);
+        const center=this.pipeCenter(last,crossing);
+        entryCenter=center+(center<this.ground/2?40:-40);
+      }
       this.pendingChunk={distance:this.distance,birdX:this.bird.x,options:{
         x: this.nextChunkX ?? Math.max(this.pipeStartX, last ? last.x + PHYSICS.spacing + 16 : this.pipeStartX),
         ground: this.ground, entryCenter,
@@ -102,10 +125,16 @@ export class Game {
   activateLevel3() {
     if (this.difficulty === 3 || this.score < LEVEL3_TEST_SCORE) return;
     this.difficulty = 3;
-    // Level 3's first chunk is already queued after the fifth classic pair.
+    // Level 3 is already queued after five classic and two moving pairs.
     // Switching levels changes no positions and inserts no transition gap.
     if (!this.level3Queued) { this.level3Queued = true; this.appendLevel3Chunk(); }
     this.onEvent('difficulty', { level: 3 });
+  }
+  activateDifficulty() {
+    if(this.score>=LEVEL3_TEST_SCORE){this.activateLevel3();return;}
+    if(this.difficulty===1&&this.score>=LEVEL2_TEST_SCORE){
+      this.difficulty=2;this.onEvent('difficulty',{level:2});
+    }
   }
   start() { this.reset(); this.state = 'playing'; this.spawnPipe(this.pipeStartX); this.flap(); }
   flap() {
@@ -146,11 +175,12 @@ export class Game {
     if (this.state === 'playing') {
       const delta = this.speed * dt;
       this.distance += delta; this.elapsed += dt;
-      this.activateLevel3();
+      this.activateDifficulty();
       if (this.nextChunkX !== null) this.nextChunkX -= delta;
       for (const pipe of this.pipes) {
         pipe.x -= delta;
         if (pipe.level === 3) { pipe.referenceBirdX = this.bird.x; Object.assign(pipe, pipePose(pipe)); }
+        else if(pipe.level===2)pipe.center=this.pipeCenter(pipe);
       }
       while (!this.level3Queued && this.elapsed + 1e-10 >= this.nextPipeAt) {
         if (this.classicSpawned >= LEVEL3_TEST_SCORE) {
@@ -158,7 +188,7 @@ export class Game {
         }
         // Queue the following pipe a full spacing beyond the shared start
         // edge, before it can enter even the widest supported viewport.
-        this.spawnPipe(this.pipeStartX + PHYSICS.spacing - (this.elapsed - this.nextPipeAt) * PHYSICS.speed);
+        this.spawnPipe(this.pipeStartX + PHYSICS.spacing - (this.elapsed - this.nextPipeAt) * PHYSICS.speed,this.classicSpawned>=LEVEL2_TEST_SCORE?2:1);
         this.nextPipeAt += PHYSICS.spacing / PHYSICS.speed;
       }
       // Build captured chunks far enough ahead that even the angled banks
@@ -174,7 +204,7 @@ export class Game {
           this.hit(); break;
         }
         if (!pipe.scored && (pipe.level === 3 ? pipeScoreX(pipe) : pipe.x + pipe.width / 4) < this.bird.x) {
-          pipe.scored = true; this.score++; this.activateLevel3(); this.onEvent('score', { score: this.score });
+          pipe.scored = true; this.score++; this.activateDifficulty(); this.onEvent('score', { score: this.score });
         }
       }
       this.pipes = this.pipes.filter(pipe => pipe.level === 3

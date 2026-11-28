@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { Game, METRICS, PHYSICS, viewportLayout } from '../public/engine.mjs';
-import { createLevel3Chunk, pipePose, pipeShaftLength, pipeBounds, level3PipeHits } from '../public/difficulty.mjs';
+import { LEVEL3_TEST_SCORE, createLevel3Chunk, pipePose, pipeShaftLength, pipeBounds, level3PipeHits } from '../public/difficulty.mjs';
 import { createChunkPrefetch } from '../public/chunk-prefetch.mjs';
 
 export async function createClient({ reducedMotion = true, width = 480, height = 640, dpr = 1, random = () => 0, coarsePointer = false, fullscreenRequest, audio = { unlock() {}, stop() {}, play() {} } } = {}) {
@@ -332,7 +332,7 @@ export async function checkDeviceInvariantGameplay(){
     let expected;
     for(const [width,height] of shapes){
       let state=seed;const random=()=>((state=(Math.imul(state,1664525)+1013904223)>>>0)/4294967296);
-      const view=viewportLayout(width,height),game=new Game({...view,random});game.start();game.score=5;game.activateLevel3();
+      const view=viewportLayout(width,height),game=new Game({...view,random});game.start();game.score=LEVEL3_TEST_SCORE;game.activateLevel3();
       for(let i=0;i<12;i++)game.appendLevel3Chunk();
       assert.equal(game.difficulty,3);assert.equal(game.height,384);assert.equal(game.ground,336);
       const samples=[0,.137,1,4,8,13,21,34].map(time=>snapshot(game,time));

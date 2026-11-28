@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { Game,PHYSICS } from '../public/engine.mjs';
-import { LEVEL3_TEST_SCORE,LEVEL3_PIPE_SPEED,LEVEL3_OPENING_ID,LEVEL3_CHUNK_KINDS,Level3Director,createLevel3Chunk,chunkOpening,pipePose,pipeMotion,level3PipeHits,pipeBounds,pipeScoreX,triangle } from '../public/difficulty.mjs';
+import { LEVEL2_TEST_SCORE,LEVEL2_TEST_LENGTH,LEVEL3_TEST_SCORE,LEVEL3_PIPE_SPEED,LEVEL3_OPENING_ID,LEVEL3_CHUNK_KINDS,Level3Director,createLevel3Chunk,chunkOpening,pipePose,pipeMotion,level3PipeHits,pipeBounds,pipeScoreX,triangle } from '../public/difficulty.mjs';
 import { LEVEL3_CHUNKS } from '../public/level3-chunks.mjs';
 import { createClient } from './client-checks.mjs';
 const seeded=(seed=17)=>()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296);
@@ -110,29 +110,30 @@ export function checkStationaryBankAlignment(){
   return 'Stationary banks: flat tips stay level and intentional roof/floor shapes survive fitting near the ground and ceiling at every supported entry height.';
 }
 export function checkDifficulty(){
-  assert.equal(LEVEL3_TEST_SCORE,5);assert.equal(LEVEL3_PIPE_SPEED,118);
+  assert.equal(LEVEL2_TEST_SCORE,5);assert.equal(LEVEL2_TEST_LENGTH,2);assert.equal(LEVEL3_TEST_SCORE,7);assert.equal(LEVEL3_PIPE_SPEED,118);
   const events=[],game=new Game({width:614.4,height:384,random:()=>.5,onEvent:(type,data)=>events.push({type,data})});
   game.start();assert.equal(game.difficulty,1);assert.equal(game.speed,120);
   let lastClassic,firstLevel3;
-  for(let i=0;i<540;i++){
+  for(let i=0;i<720;i++){
     game.bird.y=168;game.bird.vy=0;game.update(PHYSICS.step);
     if(game.level3Queued&&!firstLevel3){
-      assert.ok(game.score<5);lastClassic=game.pipes.filter(p=>p.level===1).at(-1);firstLevel3=game.pipes.find(p=>p.level===3);
+      assert.ok(game.score<7);lastClassic=game.pipes.filter(p=>p.level===2).at(-1);firstLevel3=game.pipes.find(p=>p.level===3);
       assert.equal(firstLevel3.kind,LEVEL3_OPENING_ID);assert.equal(firstLevel3.motion,undefined);
       const opener=game.pipes.filter(p=>p.chunkId===0);
       assert.equal(opener.length,3,'stage 3 always starts with exactly three upright tunnel pairs');
       assert.ok(opener.every(p=>p.topRecord[2]===0&&p.bottomRecord[2]===0&&!p.motion));
       assert.equal(opener[1].x-opener[0].x,55);assert.equal(opener[2].x-opener[1].x,55);
-      assert.equal(game.classicSpawned,5);
+      assert.equal(game.classicSpawned,7);
       assert.ok(Math.abs(firstLevel3.x-lastClassic.x-172)<1e-8,'short deliberate release at the level switch');
       const opening=pipePose({...firstLevel3,referenceBirdX:firstLevel3.x+26});
-      assert.ok(Math.abs(opening.center-lastClassic.center)>=30,'the first moving opening differs visibly from the last classic pair');
+      const crossing=(lastClassic.x+lastClassic.width/4-game.bird.x)/PHYSICS.speed;
+      assert.ok(Math.abs(opening.center-game.pipeCenter(lastClassic,crossing))>=30,'stage 3 handoff uses the final moving pair\'s future crossing height');
       for(const p of game.pipes.filter(p=>p.level===3))assert.ok(pipeBounds(p,game.ground).minX>=game.width-1e-8,'queue entire sections offscreen');
     }
     if(firstLevel3)assert.ok(Math.abs(firstLevel3.x-lastClassic.x-172)<1e-7);
   }
-  assert.equal(game.score,5);assert.equal(game.difficulty,3);assert.equal(game.speed,118);
-  assert.equal(events.filter(e=>e.type==='difficulty').length,1);
+  assert.equal(game.score,7);assert.equal(game.difficulty,3);assert.equal(game.speed,118);
+  assert.deepEqual(events.filter(e=>e.type==='difficulty').map(e=>e.data.level),[2,3]);
   for(const value of [0,.1,.25,.5,.75,.9,1])for(const width of [240,288,614.4]){
     const run=new Game({width,random:()=>value});run.spawnPipe(run.pipeStartX);run.appendLevel3Chunk();
     const classic=run.pipes[0],moving=run.pipes[1],arrival=pipePose({...moving,referenceBirdX:moving.x+26});
@@ -516,11 +517,11 @@ export function checkDifficulty(){
   assert.ok(Math.abs(atTime(trap,fast.slowAt+.000001).center-atTime(trap,fast.slowAt-.000001).center)<.001,'speed change preserves position continuity');
   let baseline;
   for(const fps of [30,60,144,240]){
-    const run=new Game({width:614.4,height:384,random:seeded()});run.start();run.score=5;run.activateLevel3();
+    const run=new Game({width:614.4,height:384,random:seeded()});run.start();run.score=LEVEL3_TEST_SCORE;run.activateLevel3();
     let remaining=1.6;while(remaining>1e-10){const dt=Math.min(remaining,1/fps);run.bird.y=168;run.bird.vy=0;run.update(dt);remaining-=dt;}
     assert.equal(run.state,'playing');const sample=run.pipes.map(p=>[p.x,p.center].map(v=>Number(v.toFixed(6))));baseline ||= sample;assert.deepEqual(sample,baseline);
   }
-  const resized=new Game({width:614.4,height:384});resized.start();resized.score=5;resized.activateLevel3();
+  const resized=new Game({width:614.4,height:384});resized.start();resized.score=LEVEL3_TEST_SCORE;resized.activateLevel3();
   resized.pipes=chunkOfKind('rising-trio',{x:300,referenceBirdX:resized.bird.x}).pipes;
   const recorded=resized.pipes[0],old=pipePose(recorded),distance=recorded.x-resized.bird.x;resized.resize(288,623);
   assert.ok(Math.abs(recorded.x-resized.bird.x-distance)<1e-8);
@@ -529,7 +530,7 @@ export function checkDifficulty(){
 }
 export async function checkLevel3Client(){
   const c=await createClient({width:1228.8,height:768});c.controller.prepareRun();c.controller.flap();
-  const game=c.controller.game;game.score=5;game.activateLevel3();game.pipes=chunkOfKind('diagonal-rise',{x:100,referenceBirdX:game.bird.x}).pipes;c.tick(1/240);
+  const game=c.controller.game;game.score=LEVEL3_TEST_SCORE;game.activateLevel3();game.pipes=chunkOfKind('diagonal-rise',{x:100,referenceBirdX:game.bird.x}).pipes;c.tick(1/240);
   const commands=c.elements.get('game').context.commands.filter(c=>c.kind==='image'&&[112,168].includes(c.args[0])&&c.args[1]>=646);
   assert.ok(commands.some(c=>c.matrix[1]>.1)&&commands.some(c=>c.matrix[1]<-.1));
   assert.ok(commands.some(c=>c.matrix[0]*c.matrix[3]-c.matrix[1]*c.matrix[2]<0),'long pipe shafts reflect the official shaft strip');
@@ -563,7 +564,7 @@ export function checkFloorVisibility(){
       for(let time=0;time<13;time+=.037)for(const pipe of chunk.pipes){atTime(pipe,time);visible(pipe,ground);}
     }
   }
-  const resized=new Game({width:288,height:1008});resized.start();resized.score=5;resized.activateLevel3();
+  const resized=new Game({width:288,height:1008});resized.start();resized.score=LEVEL3_TEST_SCORE;resized.activateLevel3();
   resized.pipes=chunkOfKind('diagonal-rise',{ground:resized.ground,entryCenter:168}).pipes;
   resized.resize(614.4,384);
   for(let time=0;time<3;time+=.017)for(const pipe of resized.pipes){atTime(pipe,time);visible(pipe,resized.ground);}
